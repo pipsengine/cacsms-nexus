@@ -87,9 +87,9 @@ The landing dashboard at `apps/web/app/page.tsx` includes:
 
 - Cacsms Nexus topbar with tagline, status badge, environment badge, emergency stop placeholder, and notification placeholder.
 - White-background enterprise dashboard shell.
-- Placeholder sidebar with only Executive Overview, Workflow Dashboard, System Setup, and Coming Soon modules.
+- Searchable, collapsible enterprise sidebar spanning 22 operational domains and 484 routed module workspaces.
 - Workflow-first dashboard section with 23 responsive workflow preview cards.
-- Reusable `WorkflowCard`, `StatusBadge`, `DashboardShell`, `Topbar`, and `SidebarPlaceholder` components.
+- Reusable `WorkflowCard`, `StatusBadge`, `DashboardShell`, `Topbar`, and responsive `Sidebar` components.
 - Mock workflow data, Zustand workflow state, and hooks for frontend-only status rendering.
 
 ## Next Implementation Phases

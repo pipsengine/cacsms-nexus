@@ -1,13 +1,22 @@
-import { Bell, OctagonAlert, ShieldCheck, Sparkles } from "lucide-react";
+import { Bell, Menu, OctagonAlert, ShieldCheck, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
-export function Topbar() {
+export function Topbar({ onOpenNavigation }: { onOpenNavigation?: () => void }) {
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
       <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Open navigation"
+              onClick={onOpenNavigation}
+              className="xl:hidden"
+            >
+              <Menu className="h-4 w-4" />
+            </Button>
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white">
               <Sparkles className="h-5 w-5" />
             </div>
