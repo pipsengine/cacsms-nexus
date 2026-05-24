@@ -9,6 +9,7 @@ import { useWorkflowStatus } from "@/hooks/use-workflow-status";
 
 export function WorkflowDashboard() {
   const { stages, selectedStage, lastUpdatedAt, selectStage } = useWorkflowStatus();
+  const lastUpdatedLabel = lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleTimeString() : "—";
 
   return (
     <div className="mx-auto flex w-full max-w-[1800px] flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8">
@@ -65,7 +66,7 @@ export function WorkflowDashboard() {
               </p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
-              Last updated: {new Date(lastUpdatedAt).toLocaleTimeString()}
+              Last updated: {lastUpdatedLabel}
             </div>
           </div>
 

@@ -1,10 +1,5 @@
-import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { WorkflowDashboard } from "@/components/workflow/workflow-dashboard";
+import { redirect } from "next/navigation";
 
 export default function Home() {
-  return (
-    <DashboardShell>
-      <WorkflowDashboard />
-    </DashboardShell>
-  );
+  redirect("/executive-overview/autonomous-workflow");
 }

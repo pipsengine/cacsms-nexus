@@ -8,6 +8,7 @@ type WorkflowState = {
   selectedStage: WorkflowStage | null;
   simulatedStatus: WorkflowStatus;
   lastUpdatedAt: string;
+  touchLastUpdatedAt: () => void;
   selectStage: (stageNumber: number) => void;
   setSimulatedStatus: (status: WorkflowStatus) => void;
 };
@@ -16,7 +17,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   stages: mockWorkflowStages,
   selectedStage: mockWorkflowStages[0],
   simulatedStatus: "Running",
-  lastUpdatedAt: new Date().toISOString(),
+  lastUpdatedAt: "",
+  touchLastUpdatedAt: () => set({ lastUpdatedAt: new Date().toISOString() }),
   selectStage: (stageNumber) => {
     const selectedStage = get().stages.find((stage) => stage.stageNumber === stageNumber) ?? null;
     set({ selectedStage, lastUpdatedAt: new Date().toISOString() });
