@@ -1,0 +1,8 @@
+name: cacsms-nexus
+
+services:
+  placeholder:
+    image: alpine:3.20
+    command: ["sh", "-c", "echo 'Cacsms Nexus service stack placeholder'"]
+    profiles:
+      - placeholder
