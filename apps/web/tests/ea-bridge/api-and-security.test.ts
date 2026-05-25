@@ -1,0 +1,169 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  acknowledgeTradeCommand,
+  acceptBridgeMessage,
+  authorizeEaIngestion,
+  autoRemediateBridge,
+  bridgeAudits,
+  buildEaBridgeResponse,
+  eaBridgeRole,
+  ingestSignedBridgeEvent,
+  pendingTradeCommands,
+  publicBridgeInstance,
+  queueTradeCommand,
+  rotateBridgeToken,
+  setBridgeTrading,
+  signBridgeEnvelope
+} from "@/app/api/mt5/ea-bridge/_lib/store";
+import { createEaBridgeSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-bridge/data/ea-bridge.mock";
+import type { SignedBridgeEnvelope, TerminalMessageType, TradeCommand } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-bridge/types/ea-bridge.types";
+
+function signedEnvelope(messageType: TerminalMessageType, payload: unknown, nonce: string): SignedBridgeEnvelope {
+  const unsigned = {
+    instanceId: "ea-ld4-01",
+    messageType,
+    timestamp: new Date().toISOString(),
+    nonce,
+    payloadJson: JSON.stringify(payload)
+  };
+  return { ...unsigned, signature: signBridgeEnvelope(unsigned, "terminal-signing-secret") };
+}
+
+function withTerminalCredentials<T>(work: (request: Request) => T) {
+  const token = process.env.MT5_EA_INGESTION_TOKEN;
+  const signingSecret = process.env.MT5_EA_SIGNING_SECRET_EA_LD4_01;
+  process.env.MT5_EA_INGESTION_TOKEN = "terminal-ingestion-token";
+  process.env.MT5_EA_SIGNING_SECRET_EA_LD4_01 = "terminal-signing-secret";
+  try {
+    return work(new Request("http://localhost/api/mt5/ea-bridge/ingest/heartbeat", { headers: { authorization: "Bearer terminal-ingestion-token" } }));
+  } finally {
+    if (token === undefined) delete process.env.MT5_EA_INGESTION_TOKEN; else process.env.MT5_EA_INGESTION_TOKEN = token;
+    if (signingSecret === undefined) delete process.env.MT5_EA_SIGNING_SECRET_EA_LD4_01; else process.env.MT5_EA_SIGNING_SECRET_EA_LD4_01 = signingSecret;
+  }
+}
+
+describe("EA bridge domain controls", () => {
+  it("returns operational bridge sections", () => {
+    const response = buildEaBridgeResponse("Infrastructure Admin");
+    expect(response.kpis).toHaveLength(12);
+    expect(response.workflow).toHaveLength(10);
+    expect(response.instances.length).toBeGreaterThan(0);
+    expect(response.sessions.length).toBeGreaterThan(0);
+    expect(response.messages.length).toBeGreaterThan(0);
+    expect(response.commands.length).toBeGreaterThan(0);
+    expect(response.instances.every((instance) => instance.bridgeTokenHash === "[redacted]")).toBe(true);
+  });
+
+  it("protects token rotation and trading-channel writes by role and confirmation", () => {
+    expect(eaBridgeRole(new Request("http://localhost/api/mt5/ea-bridge"))).toBe("Read-Only Viewer");
+    expect(() => rotateBridgeToken("ea-ld4-01", "Read-Only Viewer", true)).toThrow(/not authorized/);
+    expect(() => rotateBridgeToken("ea-ld4-01", "Infrastructure Admin", false)).toThrow(/Confirmation/);
+    expect(() => setBridgeTrading("ea-ld4-01", false, "Read-Only Viewer", true)).toThrow(/not authorized/);
+  });
+
+  it("rejects invalid payloads and duplicate commands", () => {
+    const seed = createEaBridgeSeed();
+    const invalidMessage = { ...seed.messages[0], id: "invalid-new", messageUuid: "invalid-new", nonce: "new-invalid", signed: false, createdAt: new Date().toISOString() };
+    expect(acceptBridgeMessage(invalidMessage).accepted).toBe(false);
+    expect(queueTradeCommand({ ...seed.commands[0] }, "Trading Admin", true).accepted).toBe(false);
+  });
+
+  it("fails closed for unauthenticated EA ingestion and command admission", () => {
+    const original = process.env.MT5_EA_INGESTION_SECRET;
+    delete process.env.MT5_EA_INGESTION_SECRET;
+    expect(() => authorizeEaIngestion(new Request("http://localhost/api/mt5/ea-bridge/messages"))).toThrow(/not authorized/);
+    process.env.MT5_EA_INGESTION_SECRET = "bridge-secret";
+    expect(() => authorizeEaIngestion(new Request("http://localhost/api/mt5/ea-bridge/messages", { headers: { authorization: "Bearer bridge-secret" } }))).not.toThrow();
+    if (original === undefined) delete process.env.MT5_EA_INGESTION_SECRET; else process.env.MT5_EA_INGESTION_SECRET = original;
+    expect(() => queueTradeCommand({ ...createEaBridgeSeed().commands[0], commandUuid: "new-command" }, "Read-Only Viewer", true)).toThrow(/not authorized/);
+  });
+
+  it("ingests signed terminal telemetry and blocks replayed or tampered envelopes", () => {
+    withTerminalCredentials((request) => {
+      const nonce = `heartbeat-${Date.now()}`;
+      const heartbeat = signedEnvelope("Heartbeat", {
+        terminalName: "MT5-Live-01",
+        accountLogin: "73018421",
+        brokerConnected: true,
+        marketDataActive: true,
+        tradingEnabled: true,
+        latencyMs: 29
+      }, nonce);
+      expect(ingestSignedBridgeEvent(heartbeat, "Heartbeat", request).accepted).toBe(true);
+      expect(() => ingestSignedBridgeEvent(heartbeat, "Heartbeat", request)).toThrow(/Nonce replay/);
+      const tampered = signedEnvelope("Heartbeat", {
+        terminalName: "MT5-Live-01",
+        accountLogin: "73018421",
+        brokerConnected: true,
+        marketDataActive: true,
+        tradingEnabled: true,
+        latencyMs: 29
+      }, `tampered-${Date.now()}`);
+      tampered.payloadJson = tampered.payloadJson.replace("29", "900");
+      expect(() => ingestSignedBridgeEvent(tampered, "Heartbeat", request)).toThrow(/Signed payload/);
+      const snapshot = signedEnvelope("Account Snapshot", {
+        accountLogin: "73018421",
+        balance: 284200,
+        equity: 286410,
+        credit: 0,
+        margin: 14280,
+        freeMargin: 272130,
+        marginLevel: 2005.7,
+        floatingProfitLoss: 2210,
+        openPositionsCount: 2,
+        pendingOrdersCount: 1,
+        tradingAllowed: true,
+        expertTradingAllowed: true
+      }, `snapshot-${Date.now()}`);
+      expect(ingestSignedBridgeEvent(snapshot, "Account Snapshot", request).accountSync?.reconciliation.reconciliationStatus).toBe("Matched");
+    });
+  });
+
+  it("delivers only approved pending commands and accepts signed terminal feedback", () => {
+    withTerminalCredentials((request) => {
+      const timestamp = Date.now();
+      const command: TradeCommand = {
+        id: `cmd-live-${timestamp}`,
+        commandUuid: `command-live-${timestamp}`,
+        eaInstanceId: "ea-ld4-01",
+        accountId: "acct-1",
+        accountLogin: "73018421",
+        symbol: "XAUUSD",
+        commandType: "Limit",
+        direction: "Sell",
+        volume: 0.07,
+        requestedPrice: 2358.5,
+        riskApprovalStatus: "Approved",
+        deliveryStatus: "Delivered",
+        executionStatus: "Executed",
+        responseTimeMs: 11,
+        strategyId: `terminal-test-${timestamp}`,
+        signalTimestamp: new Date(timestamp).toISOString(),
+        createdAt: new Date(timestamp).toISOString()
+      };
+      expect(queueTradeCommand(command, "Trading Admin", true).accepted).toBe(true);
+      expect(pendingTradeCommands("ea-ld4-01", signedEnvelope("Command Poll", {}, `poll-before-${timestamp}`), request).commands.some((item) => item.commandUuid === command.commandUuid)).toBe(true);
+      const acknowledgement = signedEnvelope("Trade Execution Result", {
+        commandUuid: command.commandUuid,
+        status: "Executed",
+        responseTimeMs: 42
+      }, `ack-${timestamp}`);
+      const result = acknowledgeTradeCommand("ea-ld4-01", acknowledgement, request);
+      expect(result.command.executionStatus).toBe("Executed");
+      expect(result.command.deliveryStatus).toBe("Delivered");
+      expect(pendingTradeCommands("ea-ld4-01", signedEnvelope("Command Poll", {}, `poll-after-${timestamp}`), request).commands.some((item) => item.commandUuid === command.commandUuid)).toBe(false);
+    });
+  });
+
+  it("retries only safe undelivered messages and audits changes", () => {
+    const before = bridgeAudits().length;
+    const result = autoRemediateBridge("bridge-diag-2", "Infrastructure Admin", true);
+    rotateBridgeToken("ea-ny4-02", "Infrastructure Admin", true);
+    expect(result.safeMessagesReplayed).toBeGreaterThanOrEqual(1);
+    expect(bridgeAudits().length).toBeGreaterThanOrEqual(before + 2);
+    expect(bridgeAudits().some((record) => record.action === "Bridge token rotated")).toBe(true);
+    expect(JSON.stringify(bridgeAudits())).not.toContain("stored-hash-only");
+    expect(publicBridgeInstance("ea-ny4-02").bridgeTokenHash).toBe("[redacted]");
+  });
+});

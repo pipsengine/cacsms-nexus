@@ -1,0 +1,173 @@
+import type { AuditRecord, Mt5Role } from "../../mt5-control-center/types/mt5-control-center.types";
+
+export type TerminalTone = "Healthy" | "Watch" | "Degraded" | "Critical" | "Offline" | "Syncing" | "Inactive";
+export type TerminalSeverity = "Info" | "Warning" | "Critical";
+export type PressureLevel = "Normal" | "Watch" | "Degraded" | "Critical";
+export type FreezeState = "Clear" | "Freeze Suspected" | "Freeze Confirmed";
+
+export type TerminalStatusRecord = {
+  id: string;
+  terminalId: string;
+  terminalUuid: string;
+  terminalName: string;
+  brokerId: string;
+  brokerName: string;
+  accountId: string;
+  accountLogin: string;
+  accountType: string;
+  accountCurrency: string;
+  serverName: string;
+  hostMachine: string;
+  ipAddress: string;
+  operatingSystem: string;
+  region: string;
+  timezone: string;
+  terminalPath: string;
+  terminalVersion: string;
+  buildNumber: number;
+  processStatus: "Running" | "Stopped" | "Unresponsive";
+  processId: number | null;
+  startupTime: string;
+  connectionStatus: TerminalTone;
+  heartbeatStatus: TerminalTone;
+  lastHeartbeatAt: string;
+  expectedHeartbeatIntervalSeconds: number;
+  heartbeatDelaySeconds: number;
+  missedHeartbeatCount: number;
+  cpuUsagePercent: number;
+  memoryUsagePercent: number;
+  diskUsagePercent: number;
+  networkLatencyMs: number;
+  packetLossPercent: number;
+  logFileSizeMb: number;
+  dataFolderSizeMb: number;
+  uptimeSeconds: number;
+  tradingEnabled: boolean;
+  expertAdvisorsEnabled: boolean;
+  dllImportsEnabled: boolean;
+  accountTradeAllowed: boolean;
+  marketDataActive: boolean;
+  symbolMappingsValid: boolean;
+  orderGatewayConnected: boolean;
+  riskEngineConnected: boolean;
+  openPositionsCount: number;
+  pendingOrdersCount: number;
+  lastErrorCode: string | null;
+  lastErrorMessage: string | null;
+  riskLevel: TerminalTone;
+  healthScore: number;
+  restartRequired: boolean;
+  autoRestartEnabled: boolean;
+  maintenanceMode: boolean;
+  restartAttemptCount: number;
+  restartAttemptLimit: number;
+  highRiskTradeInProgress: boolean;
+  accountSyncInProgress: boolean;
+  lastMarketTickAt: string;
+  lastAccountUpdateAt: string;
+  logsUpdatedAt: string;
+  updatedAt: string;
+};
+
+export type HeartbeatLog = {
+  id: string;
+  terminalId: string;
+  heartbeatReceivedAt: string;
+  expectedIntervalSeconds: number;
+  delaySeconds: number;
+  status: TerminalTone;
+  cpuUsagePercent: number;
+  memoryUsagePercent: number;
+  diskUsagePercent: number;
+  networkLatencyMs: number;
+  processRunning: boolean;
+  brokerConnected: boolean;
+  marketDataActive: boolean;
+  tradingEnabled: boolean;
+};
+
+export type TerminalEvent = {
+  id: string;
+  terminalId: string;
+  terminalName: string;
+  eventType: string;
+  severity: TerminalSeverity;
+  sourceModule: string;
+  message: string;
+  previousStatus?: TerminalTone;
+  newStatus?: TerminalTone;
+  triggeredBy: string;
+  actionTaken: string;
+  result: string;
+  autoResolved: boolean;
+  createdAt: string;
+};
+
+export type TerminalErrorLog = {
+  id: string;
+  terminalId: string;
+  terminalName: string;
+  brokerName: string;
+  accountLogin: string;
+  errorCode: string;
+  errorMessage: string;
+  severity: TerminalSeverity;
+  sourceModule: "Authentication" | "Broker" | "Market Data" | "Trade" | "Resource" | "Terminal";
+  repeatCount: number;
+  lastSeenAt: string;
+  resolved: boolean;
+  aiExplanation: string;
+  suggestedFix: string;
+};
+
+export type TerminalAiDiagnostic = {
+  id: string;
+  terminalId: string;
+  terminalName: string;
+  riskScore: number;
+  failureProbability: number;
+  anomalyDetected: string;
+  severity: TerminalSeverity;
+  rootCause: string;
+  businessImpact: string;
+  recommendation: string;
+  confidenceScore: number;
+  autoFixEligible: boolean;
+  autoFixStatus: "Available" | "Blocked" | "Running" | "Completed" | "Approval Required";
+  estimatedRecoveryConfidence: number;
+  escalationRequired: boolean;
+  createdAt: string;
+};
+
+export type TerminalWorkflowNode = {
+  title: string;
+  status: TerminalTone;
+  count: number;
+  failedCount: number;
+  averageDelaySeconds: number;
+  lastCheckedAt: string;
+  aiRecommendation?: string;
+};
+
+export type TerminalStatusResponse = {
+  meta: { timestamp: string; currentRole: Mt5Role; streamEndpoint: string; monitoringMode: "Autonomous" };
+  kpis: Array<{ label: string; value: string; status: TerminalTone; trend: string; detail: string; updatedAt: string }>;
+  workflow: TerminalWorkflowNode[];
+  terminals: TerminalStatusRecord[];
+  heartbeatLogs: HeartbeatLog[];
+  events: TerminalEvent[];
+  errors: TerminalErrorLog[];
+  diagnostics: TerminalAiDiagnostic[];
+  audits: AuditRecord[];
+  resourceSummary: { averageCpu: number; averageMemory: number; averageDisk: number; averageLatency: number; pressureScore: number };
+  permissions: {
+    role: Mt5Role;
+    canSync: boolean;
+    canRunHealthCheck: boolean;
+    canRestart: boolean;
+    canTradeControl: boolean;
+    canMaintenance: boolean;
+    canEmergencyDisable: boolean;
+    canAutoRemediate: boolean;
+  };
+};
