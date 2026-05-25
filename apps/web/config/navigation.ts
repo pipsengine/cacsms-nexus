@@ -350,7 +350,7 @@ const definitions: SectionDefinition[] = [
       { label: "Market Watch", description: "Real-time quotes, sessions, spreads, and watchlist intelligence.", status: "Operational", plannedFeatures: defaultPlannedFeatures },
       { label: "Chart Control", description: "Interactive MT5 chart workspaces, overlays, signals, and snapshots.", status: "Operational", plannedFeatures: defaultPlannedFeatures },
       { label: "Chart Templates", description: "Governed chart presets, indicator packs, versioning, and deployments.", status: "Operational", plannedFeatures: defaultPlannedFeatures },
-      { label: "Order Router", description: "Order router placeholder.", plannedFeatures: defaultPlannedFeatures },
+      { label: "Order Router", description: "Audited MT5 order validation and routing command center.", status: "Operational", plannedFeatures: defaultPlannedFeatures },
       { label: "Trade Synchronization", description: "Trade sync placeholder.", plannedFeatures: defaultPlannedFeatures },
       { label: "Execution Queue", description: "Execution queue placeholder.", plannedFeatures: defaultPlannedFeatures },
       { label: "Connection Health", description: "Connection health placeholder.", plannedFeatures: defaultPlannedFeatures },
