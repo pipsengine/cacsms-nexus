@@ -349,7 +349,7 @@ const definitions: SectionDefinition[] = [
       { label: "Symbol Sync", description: "Real-time broker instrument normalization and feed readiness.", status: "Operational", plannedFeatures: defaultPlannedFeatures },
       { label: "Market Watch", description: "Real-time quotes, sessions, spreads, and watchlist intelligence.", status: "Operational", plannedFeatures: defaultPlannedFeatures },
       { label: "Chart Control", description: "Interactive MT5 chart workspaces, overlays, signals, and snapshots.", status: "Operational", plannedFeatures: defaultPlannedFeatures },
-      { label: "Chart Templates", description: "Chart templates placeholder.", plannedFeatures: defaultPlannedFeatures },
+      { label: "Chart Templates", description: "Governed chart presets, indicator packs, versioning, and deployments.", status: "Operational", plannedFeatures: defaultPlannedFeatures },
       { label: "Order Router", description: "Order router placeholder.", plannedFeatures: defaultPlannedFeatures },
       { label: "Trade Synchronization", description: "Trade sync placeholder.", plannedFeatures: defaultPlannedFeatures },
       { label: "Execution Queue", description: "Execution queue placeholder.", plannedFeatures: defaultPlannedFeatures },
