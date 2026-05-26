@@ -6,6 +6,7 @@ export const MT5_MODULE_KEYS = [
   "chart-templates",
   "connection-health",
   "ea-bridge",
+  "ea-terminal-hub",
   "ea-monitoring",
   "error-logs",
   "execution-logs",

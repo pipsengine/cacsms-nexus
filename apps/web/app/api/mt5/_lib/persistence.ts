@@ -1,6 +1,11 @@
-import { query } from "@/lib/postgres";
+import "server-only";
 
 import { MT5_MODULE_KEYS, type Mt5ModuleKey } from "./module-keys";
+
+async function runQuery<T extends import("pg").QueryResultRow>(text: string, values?: unknown[]) {
+  const { query } = await import("@/lib/postgres");
+  return query<T>(text, values);
+}
 
 const moduleImporters: Record<Mt5ModuleKey, () => Promise<unknown>> = {
   "mt5-control-center": () => import("./store"),
@@ -10,6 +15,7 @@ const moduleImporters: Record<Mt5ModuleKey, () => Promise<unknown>> = {
   "chart-templates": () => import("../chart-templates/_lib/store"),
   "connection-health": () => import("../connection-health/_lib/store"),
   "ea-bridge": () => import("../ea-bridge/_lib/store"),
+  "ea-terminal-hub": () => import("../ea-terminal-hub/_lib/store"),
   "ea-monitoring": () => import("../ea-monitoring/_lib/store"),
   "error-logs": () => import("../error-logs/_lib/store"),
   "execution-logs": () => import("../execution-logs/_lib/store"),
@@ -57,7 +63,7 @@ function shouldUseDatabase() {
 
 async function ensureSchema() {
   if (!schemaReady) {
-    schemaReady = query(`
+    schemaReady = runQuery(`
       create table if not exists mt5_module_states (
         module_key text primary key,
         state jsonb not null default '{}'::jsonb,
@@ -98,7 +104,7 @@ function reviveValue<T>(value: T): T {
 
 async function loadModuleState(moduleKey: Mt5ModuleKey) {
   await ensureSchema();
-  const result = await query<{ state: object }>(
+  const result = await runQuery<{ state: object }>(
     "select state from mt5_module_states where module_key = $1",
     [moduleKey]
   );
@@ -108,7 +114,7 @@ async function loadModuleState(moduleKey: Mt5ModuleKey) {
 
 async function writeModuleState(moduleKey: Mt5ModuleKey, state: object) {
   await ensureSchema();
-  await query(
+  await runQuery(
     `
       insert into mt5_module_states (module_key, state, updated_at)
       values ($1, $2::jsonb, now())
