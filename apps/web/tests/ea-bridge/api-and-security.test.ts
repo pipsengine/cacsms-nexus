@@ -13,13 +13,14 @@ import {
   pendingTradeCommands,
   publicBridgeInstance,
   queueTradeCommand,
+  resetEaBridgeState,
   rotateBridgeToken,
   reissueEaPairingCredentials,
   setBridgeTrading,
   signBridgeEnvelope,
   testEaPairingCredentials
 } from "@/app/api/mt5/ea-bridge/_lib/store";
-import { EaIngestionAuthError } from "@/app/api/mt5/ea-bridge/_lib/ingestion-auth";
+import { EaIngestionAuthError, hashIngestionToken } from "@/app/api/mt5/ea-bridge/_lib/ingestion-auth";
 import { createEaBridgeSeed } from "@/tests/fixtures/ea-bridge.fixture";
 import type { SignedBridgeEnvelope, TerminalMessageType, TradeCommand } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-bridge/types/ea-bridge.types";
 
@@ -102,6 +103,28 @@ describe("EA bridge domain controls", () => {
     })).not.toThrow();
     if (original === undefined) delete process.env.MT5_EA_INGESTION_SECRET; else process.env.MT5_EA_INGESTION_SECRET = original;
     expect(() => queueTradeCommand({ ...createEaBridgeSeed().commands[0], commandUuid: "new-command" }, "Read-Only Viewer", true)).toThrow(/not authorized/);
+  });
+
+  it("accepts ingestion token when secrets store is missing but instance bridgeTokenHash matches", () => {
+    const originalToken = process.env.MT5_EA_INGESTION_TOKEN;
+    const originalSecret = process.env.MT5_EA_INGESTION_SECRET;
+    delete process.env.MT5_EA_INGESTION_TOKEN;
+    delete process.env.MT5_EA_INGESTION_SECRET;
+
+    const seed = createEaBridgeSeed();
+    const token = "bridge-secret";
+    seed.instances[0] = { ...seed.instances[0], bridgeTokenHash: `sha256:${hashIngestionToken(token)}` };
+    seed.issuedCredentialSecrets = {};
+    resetEaBridgeState(seed);
+
+    expect(() => authorizeEaIngestion({
+      request: new Request("http://localhost/api/mt5/ea-bridge/ingest/heartbeat", { headers: { authorization: `Bearer ${token}` } }),
+      endpointName: "ingest/heartbeat",
+      instanceId: seed.instances[0].id
+    })).not.toThrow();
+
+    if (originalToken === undefined) delete process.env.MT5_EA_INGESTION_TOKEN; else process.env.MT5_EA_INGESTION_TOKEN = originalToken;
+    if (originalSecret === undefined) delete process.env.MT5_EA_INGESTION_SECRET; else process.env.MT5_EA_INGESTION_SECRET = originalSecret;
   });
 
   it("accepts reissued pairing credentials through test pairing heartbeat", () => {

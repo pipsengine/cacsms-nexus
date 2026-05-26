@@ -84,6 +84,11 @@ function localDevSigningSecret(instanceId: string) {
   return normalizeIngestionToken(process.env[instanceKey] ?? process.env.MT5_EA_SIGNING_SECRET ?? "");
 }
 
+function parseSha256TokenHash(value: string) {
+  const match = String(value ?? "").trim().match(/^sha256:([a-f0-9]{64})$/i);
+  return match ? match[1].toLowerCase() : "";
+}
+
 function ensureLocalDevCredentialAlignment(instanceId: string) {
   if (!isLocalDevOperatorMode()) return;
   const ingestionToken = localDevIngestionToken();
@@ -273,12 +278,15 @@ export function authorizeEaIngestion(input: AuthorizeEaIngestionInput | Request,
   });
 
   const issuedPreview = instance ? credentialSecrets(instance.id) : undefined;
+  const expectedPreviewHash = instance
+    ? (issuedPreview?.ingestionTokenHash ?? parseSha256TokenHash(instance.bridgeTokenHash))
+    : "";
   const diagnostics = buildIngestionAuthDiagnostics({
     endpointName: normalizedInput.endpointName,
     token,
     tokenSource: source,
     instance,
-    expectedHash: issuedPreview?.ingestionTokenHash,
+    expectedHash: expectedPreviewHash,
     expectedHint: issuedPreview?.ingestionTokenHint ?? null
   });
 
@@ -356,11 +364,12 @@ export function authorizeEaIngestion(input: AuthorizeEaIngestionInput | Request,
   const envMatch = Boolean(envToken && normalizeIngestionToken(token) === envToken);
   const issued = credentialSecrets(boundInstance.id);
   const receivedHash = hashIngestionToken(token);
-  const issuedMatch = Boolean(issued?.ingestionTokenHash && receivedHash === issued.ingestionTokenHash);
+  const expectedHash = issued?.ingestionTokenHash || parseSha256TokenHash(boundInstance.bridgeTokenHash);
+  const issuedMatch = Boolean(expectedHash && receivedHash === expectedHash);
 
   if (!envMatch && !issuedMatch) {
     const receivedHint = tokenSafeFingerprint(token);
-    const expectedHint = issued?.ingestionTokenHint ?? fingerprintFromHash(issued?.ingestionTokenHash ?? "");
+    const expectedHint = issued?.ingestionTokenHint ?? fingerprintFromHash(expectedHash);
     rejectIngestionAuth(
       "token_mismatch",
       `EA token ${receivedHint.prefix}…${receivedHint.suffix} (len ${receivedHint.length}) does not match active pairing ${expectedHint.prefix}…${expectedHint.suffix} (len ${expectedHint.length}). Reissue EA Pairing, click Test Pairing, then paste that receipt into NexusBridgeEA inputs.`,
