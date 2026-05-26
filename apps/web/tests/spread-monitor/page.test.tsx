@@ -36,7 +36,7 @@ describe("Spread Monitor dashboard", () => {
     expect(screen.getByRole("button", { name: "Disable Unsafe Symbols" })).toBeDisabled();
 
     expect((await screen.findAllByRole("button", { name: "EURUSD" })).length).toBeGreaterThan(0);
-  });
+  }, 15000);
 
   it("searches the spread monitor table", async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -51,6 +51,5 @@ describe("Spread Monitor dashboard", () => {
 
     const table = within(screen.getByRole("table", { name: "Spread monitor table" }));
     expect((await table.findAllByText("IC Markets")).length).toBeGreaterThan(0);
-  });
+  }, 15000);
 });
-

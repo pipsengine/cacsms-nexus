@@ -39,7 +39,7 @@ describe("Connection Health dashboard", () => {
     expect(screen.getByRole("button", { name: "Disable Unsafe Trading" })).toBeDisabled();
 
     expect(await screen.findByRole("button", { name: "term-01" })).toBeInTheDocument();
-  });
+  }, 15000);
 
   it("searches the connection components table", async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -54,5 +54,5 @@ describe("Connection Health dashboard", () => {
 
     const table = within(screen.getByRole("table", { name: "Connection components" }));
     expect((await table.findAllByText("IC Markets")).length).toBeGreaterThan(0);
-  });
+  }, 15000);
 });

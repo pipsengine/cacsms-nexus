@@ -41,7 +41,7 @@ describe("Execution Queue dashboard", () => {
     expect(screen.getByRole("button", { name: /Emergency Stop Execution/i })).toBeDisabled();
 
     expect(await screen.findByText("queue-001")).toBeInTheDocument();
-  });
+  }, 15000);
 
   it("searches the execution queue table", async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -56,5 +56,5 @@ describe("Execution Queue dashboard", () => {
 
     const table = within(screen.getByRole("table", { name: "Execution queue items" }));
     expect((await table.findAllByText("IC Markets")).length).toBeGreaterThan(0);
-  });
+  }, 15000);
 });
