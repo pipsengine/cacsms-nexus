@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import {describe, expect, it, beforeEach } from "vitest";
+import { seedMt5ControlCenterStore } from "@/tests/helpers/seed-api-stores";
 
 import {
   buildControlCenter,
@@ -9,6 +10,7 @@ import {
 } from "@/app/api/mt5/_lib/store";
 
 describe("MT5 control API domain", () => {
+  beforeEach(() => seedMt5ControlCenterStore());
   it("builds every operational control-center section", () => {
     const dashboard = buildControlCenter("Infrastructure Admin");
     expect(dashboard.kpis).toHaveLength(10);

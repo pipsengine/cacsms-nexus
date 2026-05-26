@@ -42,8 +42,8 @@ const state = bindPersistedMt5State("slippage-monitor", () => ({
   unsafeExecutionDisabled: false
 }));
 
-export function resetSlippageMonitorState() {
-  const next = seed();
+export function resetSlippageMonitorState(override?: ReturnType<typeof createSlippageMonitorSeed>) {
+  const next = override ? { ...override, audits: [] as AuditRecord[] } : seed();
   state.thresholds = next.thresholds;
   state.executions = next.executions;
   state.trends = next.trends;

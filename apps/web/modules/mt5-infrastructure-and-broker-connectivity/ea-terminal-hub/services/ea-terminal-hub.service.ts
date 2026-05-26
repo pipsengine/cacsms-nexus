@@ -22,7 +22,7 @@ export async function runEaTerminalHubAction(path: string, body?: Record<string,
   const response = await fetch(`${BASE}/${path}`, {
     method: "POST",
     headers: roleHeaders(),
-    body: JSON.stringify(body ?? {})
+    body: JSON.stringify({ confirmed: true, ...body })
   });
   const payload = (await response.json().catch(() => ({}))) as ActionResponse & { error?: string };
   if (!response.ok) throw new Error(payload.error ?? `EA terminal hub action failed (${path}).`);
@@ -55,4 +55,12 @@ export function syncAllEaFolders() {
 
 export function registerTerminalProfile(body: Record<string, string>) {
   return runEaTerminalHubAction("register-terminal", body);
+}
+
+export function previewTerminalSync(terminalId: string) {
+  return runEaTerminalHubAction("preview-sync", { terminalId });
+}
+
+export function toggleAutoLink(terminalId: string, enabled: boolean) {
+  return runEaTerminalHubAction("toggle-auto-link", { terminalId, enabled });
 }

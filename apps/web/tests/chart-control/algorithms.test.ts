@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { analyzeChart, calculateWorkspaceHealth, chartStatus, indicatorRecommendation, visibleCandles } from "@/modules/mt5-infrastructure-and-broker-connectivity/chart-control/algorithms/chart-control.algorithms";
-import { createChartControlSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/chart-control/data/chart-control.mock";
+import { createChartControlSeed } from "@/tests/fixtures/chart-control.fixture";
 
 describe("chart-control algorithms", () => {
   it("changes candle windows according to selected timeframe", () => {

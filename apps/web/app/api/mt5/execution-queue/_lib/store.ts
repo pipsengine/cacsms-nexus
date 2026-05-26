@@ -41,8 +41,8 @@ const state = bindPersistedMt5State("execution-queue", () => ({
   audits: [] as AuditRecord[]
 }));
 
-export function resetExecutionQueueState() {
-  const next = createExecutionQueueSeed();
+export function resetExecutionQueueState(override?: ReturnType<typeof createExecutionQueueSeed>) {
+  const next = override ?? createExecutionQueueSeed();
   state.queuePaused = false;
   state.emergencyStopActive = false;
   state.items = next.items;

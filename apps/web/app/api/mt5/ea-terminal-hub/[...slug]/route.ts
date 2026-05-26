@@ -7,11 +7,13 @@ import {
   disconnectTerminals,
   eaTerminalHubRole,
   linkTerminalFolder,
+  previewTerminalSync,
   registerTerminal,
   scanFolders,
   setActiveTerminal,
   summary,
-  syncAllTerminalFolders
+  syncAllTerminalFolders,
+  toggleAutoLink
 } from "../_lib/store";
 
 export const dynamic = "force-dynamic";
@@ -52,6 +54,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ slu
     }
 
     if (slug[0] === "summary") return ok(summary(role));
+    if (slug[0] === "preview-sync" && slug[1]) return ok(await previewTerminalSync(slug[1], role));
     if (!slug.length) return ok(await buildEaTerminalHubResponse(role));
     notFound();
   } catch (error) {
@@ -88,15 +91,22 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
           {
             terminalId: String(body.terminalId ?? ""),
             confirmed: Boolean(body.confirmed),
-            fileNames: body.fileNames as string[] | undefined
+            fileNames: body.fileNames as string[] | undefined,
+            relativePaths: body.relativePaths as string[] | undefined
           },
           role,
           request
         )
       );
     }
+    if (slug[0] === "preview-sync") {
+      return ok(await previewTerminalSync(String(body.terminalId ?? ""), role));
+    }
     if (slug[0] === "set-active") return ok(await setActiveTerminal(String(body.terminalId ?? ""), role, request));
     if (slug[0] === "sync-all") return ok(await syncAllTerminalFolders(role, Boolean(body.confirmed), request));
+    if (slug[0] === "toggle-auto-link") {
+      return ok(toggleAutoLink(String(body.terminalId ?? ""), Boolean(body.enabled), role, request));
+    }
     if (slug[0] === "register-terminal") {
       return ok(
         registerTerminal(

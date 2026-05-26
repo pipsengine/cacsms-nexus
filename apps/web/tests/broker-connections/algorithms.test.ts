@@ -6,7 +6,7 @@ import {
   detectSpreadSpikes,
   rankBrokerReliability
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/broker-connections/algorithms/broker-connections.algorithms";
-import { createBrokerConnectionsSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/broker-connections/data/broker-connections.mock";
+import { createBrokerConnectionsSeed } from "@/tests/fixtures/broker-connections.fixture";
 
 describe("broker reliability and degradation algorithms", () => {
   const seed = createBrokerConnectionsSeed();

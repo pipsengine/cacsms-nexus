@@ -60,8 +60,8 @@ const state = bindPersistedMt5State<ErrorLogsState>("error-logs", () => ({
   lastSyncAt: new Date().toISOString()
 }));
 
-export function resetErrorLogsState() {
-  const next = createMt5ErrorLogsSeed();
+export function resetErrorLogsState(override?: ReturnType<typeof createMt5ErrorLogsSeed>) {
+  const next = override ?? createMt5ErrorLogsSeed();
   state.errors = next.errors;
   state.diagnostics = next.diagnostics;
   state.incidents = next.incidents;

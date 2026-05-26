@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { seedEaMonitoringStore } from "@/tests/helpers/seed-api-stores";
 
 import {
   auditTrail,
@@ -15,7 +16,7 @@ import {
 } from "@/app/api/mt5/ea-monitoring/_lib/store";
 
 describe("EA Monitoring API domain and security", () => {
-  beforeEach(() => resetEaMonitoringState());
+  beforeEach(() => seedEaMonitoringStore());
 
   it("defaults to read-only role when no header provided", () => {
     expect(eaMonitoringRole(new Request("http://localhost/api/mt5/ea-monitoring/summary"))).toBe("Read-Only Viewer");

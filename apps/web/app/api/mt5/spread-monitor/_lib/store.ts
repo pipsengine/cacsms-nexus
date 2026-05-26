@@ -40,8 +40,8 @@ const state = bindPersistedMt5State("spread-monitor", () => ({
   disabledSymbols: new Set<string>()
 }));
 
-export function resetSpreadMonitorState() {
-  const next = seed();
+export function resetSpreadMonitorState(override?: ReturnType<typeof createSpreadMonitorSeed>) {
+  const next = override ? { ...override, audits: [] as AuditRecord[] } : seed();
   state.thresholds = next.thresholds;
   state.spreads = next.spreads;
   state.trends = next.trends;

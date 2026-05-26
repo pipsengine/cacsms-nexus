@@ -1,19 +1,23 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { buildControlCenter } from "@/app/api/mt5/_lib/store";
 import { Mt5ControlCenterDashboard } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/components/mt5-control-center-dashboard";
 
-vi.mock("@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/hooks/use-mt5-control-center", () => ({
-  useMt5ControlCenter: () => ({
-    data: buildControlCenter("Read-Only Viewer"),
-    isLoading: false,
-    isError: false,
-    streamConnected: true,
-    refetch: vi.fn(),
-    action: { mutateAsync: vi.fn(), isPending: false }
-  })
-}));
+vi.mock("@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/hooks/use-mt5-control-center", async () => {
+  const { buildControlCenter } = await import("@/app/api/mt5/_lib/store");
+  const { seedMt5ControlCenterStore } = await import("@/tests/helpers/seed-api-stores");
+  seedMt5ControlCenterStore();
+  return {
+    useMt5ControlCenter: () => ({
+      data: buildControlCenter("Read-Only Viewer"),
+      isLoading: false,
+      isError: false,
+      streamConnected: true,
+      refetch: vi.fn(),
+      action: { mutateAsync: vi.fn(), isPending: false }
+    })
+  };
+});
 
 describe("MT5 Control Center dashboard", () => {
   it("renders health panels and disables protected actions for viewers", () => {

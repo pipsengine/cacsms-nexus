@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import {describe, expect, it, beforeEach } from "vitest";
+import { seedAccountSyncStore, seedEaBridgeStore, seedMt5ControlCenterStore, seedTerminalStatusStore } from "@/tests/helpers/seed-api-stores";
 
 import {
   acknowledgeTradeCommand,
@@ -16,7 +17,7 @@ import {
   setBridgeTrading,
   signBridgeEnvelope
 } from "@/app/api/mt5/ea-bridge/_lib/store";
-import { createEaBridgeSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-bridge/data/ea-bridge.mock";
+import { createEaBridgeSeed } from "@/tests/fixtures/ea-bridge.fixture";
 import type { SignedBridgeEnvelope, TerminalMessageType, TradeCommand } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-bridge/types/ea-bridge.types";
 
 function signedEnvelope(messageType: TerminalMessageType, payload: unknown, nonce: string): SignedBridgeEnvelope {
@@ -44,6 +45,12 @@ function withTerminalCredentials<T>(work: (request: Request) => T) {
 }
 
 describe("EA bridge domain controls", () => {
+  beforeEach(() => {
+    seedMt5ControlCenterStore();
+    seedTerminalStatusStore();
+    seedAccountSyncStore();
+    seedEaBridgeStore();
+  });
   it("returns operational bridge sections", () => {
     const response = buildEaBridgeResponse("Infrastructure Admin");
     expect(response.kpis).toHaveLength(12);

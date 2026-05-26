@@ -26,11 +26,11 @@ type SectionDefinition = {
   title: string;
   description: string;
   status: NavigationStatus;
-  items?: Array<{ label: string; description: string; status?: NavigationStatus; plannedFeatures?: string[] }>;
+  items?: Array<{ label: string; description: string; status?: NavigationStatus; plannedFeatures?: string[]; slug?: string }>;
   groups?: Array<{
     title: string;
     description: string;
-    items: Array<{ label: string; description: string; status?: NavigationStatus; plannedFeatures?: string[] }>;
+    items: Array<{ label: string; description: string; status?: NavigationStatus; plannedFeatures?: string[]; slug?: string }>;
   }>;
 };
 
@@ -344,7 +344,7 @@ const definitions: SectionDefinition[] = [
       { label: "MT5 Control Center", description: "Real-time MT5 infrastructure command room.", status: "Operational", plannedFeatures: defaultPlannedFeatures },
       { label: "Terminal Status", description: "Real-time terminal heartbeat and recovery operations.", status: "Operational", plannedFeatures: defaultPlannedFeatures },
       { label: "EA Bridge", description: "Secure real-time Expert Advisor communication bridge.", status: "Operational", plannedFeatures: defaultPlannedFeatures },
-      { label: "EA & Terminal Hub", description: "Link Cacsms EA folder to MT5 Experts paths and manage multi-terminal connections.", status: "Operational", plannedFeatures: defaultPlannedFeatures },
+      { label: "EA & Terminal Hub", slug: "ea-terminal-hub", description: "Link Cacsms EA folder to MT5 Experts paths and manage multi-terminal connections.", status: "Operational", plannedFeatures: defaultPlannedFeatures },
       { label: "Broker Connections", description: "Real-time broker session, execution, and data-feed control.", status: "Operational", plannedFeatures: defaultPlannedFeatures },
       { label: "Account Sync", description: "Real-time MT5 balances, exposure, and reconciliation control.", status: "Operational", plannedFeatures: defaultPlannedFeatures },
       { label: "Symbol Sync", description: "Real-time broker instrument normalization and feed readiness.", status: "Operational", plannedFeatures: defaultPlannedFeatures },
@@ -836,9 +836,10 @@ function buildItem(
   label: string,
   description: string,
   status: NavigationStatus,
-  plannedFeatures?: string[]
+  plannedFeatures?: string[],
+  slug?: string
 ): NavigationItem<LucideIcon> {
-  const itemSlug = toSlug(label);
+  const itemSlug = slug ?? toSlug(label);
   const { color } = colors[moduleKey];
   return {
     moduleKey,
@@ -858,7 +859,7 @@ export const navigationGroups: NavigationGroup<LucideIcon>[] = definitions.map((
   const theme = colors[moduleKey];
   const items =
     definition.items?.map((item) =>
-      buildItem(moduleKey, item.label, item.description, item.status ?? "Foundation", item.plannedFeatures ?? defaultPlannedFeatures)
+      buildItem(moduleKey, item.label, item.description, item.status ?? "Foundation", item.plannedFeatures ?? defaultPlannedFeatures, item.slug)
     ) ?? [];
 
   const groups =
@@ -873,7 +874,8 @@ export const navigationGroups: NavigationGroup<LucideIcon>[] = definitions.map((
             item.label,
             item.description,
             item.status ?? "Foundation",
-            item.plannedFeatures ?? defaultPlannedFeatures
+            item.plannedFeatures ?? defaultPlannedFeatures,
+            item.slug
           ),
           path: `/${moduleKey}/${groupSlug}/${toSlug(item.label)}`
         }))

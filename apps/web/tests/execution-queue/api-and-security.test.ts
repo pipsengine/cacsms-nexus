@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { seedExecutionQueueStore } from "@/tests/helpers/seed-api-stores";
 
 import { buildSummary, emergencyStop, executionQueueRole, listItems, resetExecutionQueueState, retryItem, resumeQueue } from "@/app/api/mt5/execution-queue/_lib/store";
 
 describe("Execution Queue operational controls", () => {
-  beforeEach(() => resetExecutionQueueState());
+  beforeEach(() => seedExecutionQueueStore());
 
   it("builds summary sections with KPIs and workflow", () => {
     const summary = buildSummary("Infrastructure Admin");

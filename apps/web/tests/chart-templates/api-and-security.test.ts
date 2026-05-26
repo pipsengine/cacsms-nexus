@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import {describe, expect, it, beforeEach } from "vitest";
+import { seedChartTemplatesStore } from "@/tests/helpers/seed-api-stores";
 import { archiveTemplate, audits, buildChartTemplatesResponse, cloneTemplate, publishTemplate, templateRole, validateTemplate } from "@/app/api/mt5/chart-templates/_lib/store";
 
 describe("Chart Templates operational controls", () => {
+  beforeEach(() => seedChartTemplatesStore());
   it("returns catalog, deployment, health, and governance sections", () => {
     const response = buildChartTemplatesResponse("Infrastructure Admin");
     expect(response.kpis).toHaveLength(8);

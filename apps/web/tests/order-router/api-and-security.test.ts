@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import {describe, expect, it, beforeEach } from "vitest";
+import { seedOrderRouterStore } from "@/tests/helpers/seed-api-stores";
 import {
   buildOrderRouterResponse,
   cancelRoute,
@@ -11,6 +12,7 @@ import {
 } from "@/app/api/mt5/order-router/_lib/store";
 
 describe("Order Router operational controls", () => {
+  beforeEach(() => seedOrderRouterStore());
   it("returns routed, blocked, channel, feedback, log, and diagnostic sections", () => {
     const response = buildOrderRouterResponse("Infrastructure Admin");
     expect(response.kpis).toHaveLength(12);

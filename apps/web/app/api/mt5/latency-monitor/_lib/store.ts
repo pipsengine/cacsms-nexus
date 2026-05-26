@@ -38,8 +38,8 @@ const state = bindPersistedMt5State("latency-monitor", () => ({
   testCounter: 1
 }));
 
-export function resetLatencyMonitorState() {
-  const next = seed();
+export function resetLatencyMonitorState(override?: ReturnType<typeof createLatencyMonitorSeed>) {
+  const next = override ? { ...override, audits: [] as AuditRecord[], tests: [] as LatencyTestResult[] } : seed();
   state.thresholds = next.thresholds;
   state.metrics = next.metrics;
   state.alerts = next.alerts;

@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import {describe, expect, it, beforeEach } from "vitest";
+import { seedBrokerConnectionsStore } from "@/tests/helpers/seed-api-stores";
 
 import {
   approveBrokerRestoration,
@@ -11,6 +12,7 @@ import {
 } from "@/app/api/mt5/broker-connections/_lib/store";
 
 describe("broker connection controls", () => {
+  beforeEach(() => seedBrokerConnectionsStore());
   it("returns operational dashboard sections and rankings", () => {
     const response = buildBrokerConnectionsResponse("Infrastructure Admin");
     expect(response.kpis).toHaveLength(12);

@@ -7,7 +7,7 @@ import {
   normalizeSymbol,
   recommendRecovery
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/algorithms/mt5-control-center.algorithms";
-import { createMt5Seed } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/data/mt5-control-center.mock";
+import { createMt5Seed } from "@/tests/fixtures/mt5-control-center.fixture";
 
 describe("MT5 monitoring algorithms", () => {
   it("scores degraded connectivity and labels risk consistently", () => {

@@ -11,6 +11,16 @@ const state = bindPersistedMt5State("symbol-sync", () => ({
   audits: [] as AuditRecord[],
   lastSyncAt: new Date().toISOString()
 }));
+
+export function resetSymbolSyncState(override?: ReturnType<typeof createSymbolSyncSeed>) {
+  const next = override ?? createSymbolSyncSeed();
+  for (const key of Object.keys(next) as (keyof typeof next)[]) {
+    (state as Record<string, unknown>)[key as string] = next[key];
+  }
+  state.audits = [];
+  state.lastSyncAt = new Date().toISOString();
+}
+
 const permissions: Record<string, Mt5Role[]> = {
   sync: ["Super Admin", "Infrastructure Admin"],
   validate: ["Super Admin", "Infrastructure Admin"],

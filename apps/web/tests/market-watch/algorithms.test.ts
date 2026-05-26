@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calculateMarketHealth, dailyMovePercent, detectMarketAlerts, quoteStatus, spreadPoints, topMarketMovers } from "@/modules/mt5-infrastructure-and-broker-connectivity/market-watch/algorithms/market-watch.algorithms";
-import { createMarketWatchSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/market-watch/data/market-watch.mock";
+import { createMarketWatchSeed } from "@/tests/fixtures/market-watch.fixture";
 
 describe("market watch algorithms", () => {
   it("calculates price movement and ranks instruments by absolute daily move", () => {

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { seedConnectionHealthStore } from "@/tests/helpers/seed-api-stores";
 
 import {
   buildSummary,
@@ -13,7 +14,7 @@ import {
 } from "@/app/api/mt5/connection-health/_lib/store";
 
 describe("Connection Health operational controls", () => {
-  beforeEach(() => resetConnectionHealthState());
+  beforeEach(() => seedConnectionHealthStore());
 
   it("builds summary KPIs and an overall score within range", () => {
     const summary = buildSummary("Infrastructure Admin");

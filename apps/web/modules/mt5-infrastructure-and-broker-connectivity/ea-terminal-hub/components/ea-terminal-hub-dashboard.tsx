@@ -2,18 +2,23 @@
 
 import * as React from "react";
 import {
+  Activity,
   Cable,
+  ClipboardList,
   FolderSync,
   Link2,
   Monitor,
   Plug,
   PlugZap,
   RefreshCw,
+  Search,
   Server,
+  ShieldCheck,
   Unplug
 } from "lucide-react";
 
 import type { Mt5Role } from "../../mt5-control-center/types/mt5-control-center.types";
+import { checklistTone, driftTone } from "../algorithms/ea-terminal-hub.algorithms";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,25 +27,27 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useEaTerminalHub } from "../hooks/use-ea-terminal-hub";
 import { useEaTerminalHubStore } from "../stores/ea-terminal-hub.store";
-import type { Mt5TerminalLink } from "../types/ea-terminal-hub.types";
+import type { Mt5TerminalLink, SyncPreviewItem } from "../types/ea-terminal-hub.types";
 
 const roles: Mt5Role[] = ["Super Admin", "Infrastructure Admin", "Trading Admin", "Risk Manager", "Analyst", "Read-Only Viewer"];
 
 function toneVariant(value: string) {
   const v = value.toLowerCase();
-  if (v.includes("connected") || v.includes("linked") || v.includes("healthy") || v.includes("synced")) return "success" as const;
-  if (v.includes("drift") || v.includes("watch") || v.includes("connecting")) return "warning" as const;
-  if (v.includes("critical") || v.includes("error") || v.includes("missing") || v.includes("offline")) return "destructive" as const;
+  if (v.includes("connected") || v.includes("linked") || v.includes("healthy") || v.includes("synced") || v.includes("complete")) return "success" as const;
+  if (v.includes("drift") || v.includes("watch") || v.includes("connecting") || v.includes("attention") || v.includes("pending")) return "warning" as const;
+  if (v.includes("critical") || v.includes("error") || v.includes("missing") || v.includes("offline") || v.includes("blocked")) return "destructive" as const;
   return "secondary" as const;
 }
 
-function canManage(role: Mt5Role) {
-  return role === "Super Admin" || role === "Infrastructure Admin" || role === "Trading Admin";
+function time(value: string) {
+  return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 export function EaTerminalHubDashboard() {
   const ui = useEaTerminalHubStore();
-  const { data, isLoading, isError, error, streamConnected, action } = useEaTerminalHub();
+  const { data, isLoading, isError, error, streamConnected, action, refetch } = useEaTerminalHub();
+  const [notice, setNotice] = React.useState<string | null>(null);
+  const [syncPreview, setSyncPreview] = React.useState<SyncPreviewItem[]>([]);
   const [registerDraft, setRegisterDraft] = React.useState({
     terminalName: "",
     terminalExecutablePath: "C:\\MT5\\Custom\\terminal64.exe",
@@ -49,6 +56,10 @@ export function EaTerminalHubDashboard() {
     hostMachine: "LOCAL",
     region: "Local"
   });
+
+  React.useEffect(() => {
+    void refetch();
+  }, [ui.role, refetch]);
 
   const terminals = React.useMemo(() => {
     const rows = data?.terminals ?? [];
@@ -59,27 +70,66 @@ export function EaTerminalHubDashboard() {
         row.terminalName.toLowerCase().includes(term) ||
         row.brokerName.toLowerCase().includes(term) ||
         row.accountLogin.includes(term) ||
-        row.hostMachine.toLowerCase().includes(term)
+        row.hostMachine.toLowerCase().includes(term) ||
+        (row.eaInstanceId ?? "").toLowerCase().includes(term)
     );
   }, [data?.terminals, ui.searchTerm]);
 
   const activeTerminal = terminals.find((t) => t.terminalId === data?.summary.activeTerminalId) ?? terminals.find((t) => t.isActive);
+  const permissions = data?.permissions;
 
-  const run = (path: string, body?: Record<string, unknown>) => action.mutate({ path, body });
+  async function command(label: string, path: string, body?: Record<string, unknown>) {
+    if (!window.confirm(`Confirm ${label.toLowerCase()}? This action will be audit-logged.`)) return;
+    setNotice(null);
+    setSyncPreview([]);
+    try {
+      const result = await action.mutateAsync({ path, body: { confirmed: true, ...body } });
+      if (result.preview?.length) setSyncPreview(result.preview);
+      setNotice(result.message ?? `${label} completed.`);
+    } catch (commandError) {
+      setNotice(commandError instanceof Error ? commandError.message : "EA terminal hub action failed.");
+    }
+  }
+
+  if (isError) {
+    return (
+      <div className="mx-auto max-w-[1600px] px-4 py-6">
+        <Card className="border-red-200 p-6">
+          <h1 className="text-xl font-semibold text-slate-950">EA & Terminal Hub unavailable</h1>
+          <p className="mt-2 text-sm text-red-700">{(error as Error).message}</p>
+          <Button className="mt-4" onClick={() => refetch()}>
+            Retry
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
+  if (isLoading || !data) {
+    return <div className="mx-auto max-w-[1600px] px-4 py-6 text-sm text-slate-600">Loading EA & Terminal Hub…</div>;
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card sm:p-7">
+      <section className="sticky top-14 z-20 rounded-2xl border border-slate-200 bg-white/95 p-5 shadow-card backdrop-blur sm:p-7">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">MT5 Infrastructure & Broker Connectivity</p>
-            <h1 className="mt-2 text-3xl font-semibold text-slate-950">EA & Terminal Hub</h1>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <h1 className="text-3xl font-semibold text-slate-950">EA & Terminal Hub</h1>
+              <Badge variant={streamConnected ? "success" : "warning"}>
+                <Activity className="mr-1 h-3 w-3" />
+                {streamConnected ? "Live stream" : "Polling"}
+              </Badge>
+            </div>
             <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-600">
-              Link the Cacsms system EA folder to each MT5 terminal Experts directory and manage multi-terminal connections from one control surface.
+              Link the canonical Cacsms EA folder to each MT5 terminal Experts directory, reconcile drift with content hashes, and manage multi-terminal bridge connectivity from one control surface.
+            </p>
+            <p className="mt-3 text-xs text-slate-500">
+              Role: {permissions?.role ?? ui.role} | Last update: {time(data.meta.timestamp)} | Active: {activeTerminal?.terminalName ?? "None"}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={streamConnected ? "success" : "secondary"}>{streamConnected ? "Live stream" : "Polling"}</Badge>
             <select
               aria-label="Operator role"
               className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
@@ -92,32 +142,32 @@ export function EaTerminalHubDashboard() {
                 </option>
               ))}
             </select>
-            <Button variant="outline" size="sm" disabled={action.isPending} onClick={() => run("scan")}>
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Refresh
+            </Button>
+            <Button variant="outline" size="sm" disabled={!permissions?.canScan || action.isPending} onClick={() => command("Scan folders", "scan")}>
               <RefreshCw className={cn("mr-2 h-4 w-4", action.isPending && "animate-spin")} />
               Scan folders
             </Button>
           </div>
         </div>
+        {notice ? <p className="mt-4 border-t border-slate-100 pt-3 text-xs font-semibold text-teal-800">{notice}</p> : null}
       </section>
 
-      {isError ? (
-        <Card>
-          <CardContent className="p-6 text-sm text-red-700">{(error as Error).message}</CardContent>
-        </Card>
-      ) : null}
-
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
         {[
-          ["Connected terminals", data?.summary.connectedTerminals ?? 0],
-          ["Linked folders", data?.summary.linkedTerminals ?? 0],
-          ["Drifted", data?.summary.driftedTerminals ?? 0],
-          ["Link health", `${data?.summary.linkHealthScore ?? 0}%`],
-          ["System EA files", data?.summary.systemFolder.fileCount ?? 0]
+          ["Bridge connected", data.summary.connectedTerminals],
+          ["Managed", data.summary.managedTerminals],
+          ["Linked folders", data.summary.linkedTerminals],
+          ["Drifted", data.summary.driftedTerminals],
+          ["Link health", `${data.summary.linkHealthScore}%`],
+          ["System EA files", data.summary.systemFolder.fileCount]
         ].map(([label, value]) => (
           <Card key={label}>
             <CardContent className="p-4">
               <p className="text-xs font-semibold uppercase text-slate-500">{label}</p>
-              <p className="mt-2 text-2xl font-semibold text-slate-950">{isLoading ? "…" : value}</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p>
             </CardContent>
           </Card>
         ))}
@@ -130,25 +180,32 @@ export function EaTerminalHubDashboard() {
               <Server className="h-5 w-5 text-teal-700" />
               Cacsms system EA folder
             </CardTitle>
-            <CardDescription>Canonical Experts source used by Nexus (`services/cacsms-ea`).</CardDescription>
+            <CardDescription>Canonical Experts and Include source used by Nexus (`services/cacsms-ea`).</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 font-mono text-xs text-slate-700">
-              {data?.summary.cacsmsEaRoot ?? "C:\\Next-Generation\\cacsms-nexus\\services\\cacsms-ea"}
-            </div>
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 font-mono text-xs text-slate-700">{data.summary.cacsmsEaRoot}</div>
             <p className="text-slate-600">
-              Experts path: <span className="font-mono text-xs">{data?.summary.systemFolder.expertsPath ?? "—"}</span>
+              Experts path: <span className="font-mono text-xs">{data.summary.systemFolder.expertsPath}</span>
             </p>
-            <p className="text-slate-600">Last scan: {data?.summary.systemFolder.lastScannedAt ? new Date(data.summary.systemFolder.lastScannedAt).toLocaleString() : "—"}</p>
+            {data.summary.systemFolder.includePath ? (
+              <p className="text-slate-600">
+                Include path: <span className="font-mono text-xs">{data.summary.systemFolder.includePath}</span>
+              </p>
+            ) : null}
+            <p className="text-slate-600">
+              Last scan: {data.summary.systemFolder.lastScannedAt ? new Date(data.summary.systemFolder.lastScannedAt).toLocaleString() : "—"}
+            </p>
             <ScrollArea className="h-44 rounded-xl border border-slate-100">
               <ul className="divide-y divide-slate-100 p-2 text-xs">
-                {(data?.summary.systemFolder.files ?? []).slice(0, 30).map((file) => (
+                {(data.summary.systemFolder.files ?? []).slice(0, 40).map((file) => (
                   <li key={file.relativePath} className="flex justify-between gap-2 py-2">
                     <span className="font-mono">{file.relativePath}</span>
                     <span className="text-slate-500">{file.sizeBytes} B</span>
                   </li>
                 ))}
-                {!data?.summary.systemFolder.files?.length ? <li className="py-3 text-slate-500">No EA artifacts detected yet. Add `.mq5` / `.ex5` files under `Experts/`.</li> : null}
+                {!data.summary.systemFolder.files?.length ? (
+                  <li className="py-3 text-slate-500">No EA artifacts detected yet. NexusBridgeEA.mq5 is bootstrapped automatically when available in the repo.</li>
+                ) : null}
               </ul>
             </ScrollArea>
           </CardContent>
@@ -158,19 +215,33 @@ export function EaTerminalHubDashboard() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <FolderSync className="h-5 w-5 text-teal-700" />
-              Workflow
+              Workflow & install checklist
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {(data?.workflow ?? []).map((step) => (
-              <div key={step.step} className="flex items-start justify-between gap-3 rounded-lg border border-slate-100 p-3 text-sm">
-                <div>
-                  <p className="font-semibold text-slate-900">{step.step}</p>
-                  <p className="text-slate-600">{step.detail}</p>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              {data.workflow.map((step) => (
+                <div key={step.step} className="flex items-start justify-between gap-3 rounded-lg border border-slate-100 p-3 text-sm">
+                  <div>
+                    <p className="font-semibold text-slate-900">{step.step}</p>
+                    <p className="text-slate-600">{step.detail}</p>
+                  </div>
+                  <Badge variant={toneVariant(step.status)}>{step.status}</Badge>
                 </div>
-                <Badge variant={toneVariant(step.status)}>{step.status}</Badge>
-              </div>
-            ))}
+              ))}
+            </div>
+            <Separator />
+            <div className="space-y-2">
+              {data.installChecklist.map((item) => (
+                <div key={item.step} className="flex items-start justify-between gap-3 rounded-lg bg-slate-50 p-3 text-sm">
+                  <div>
+                    <p className="font-semibold text-slate-900">{item.step}</p>
+                    <p className="text-slate-600">{item.detail}</p>
+                  </div>
+                  <Badge variant={checklistTone(item.status)}>{item.status}</Badge>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -183,45 +254,53 @@ export function EaTerminalHubDashboard() {
                 <Monitor className="h-5 w-5 text-teal-700" />
                 Multi-terminal connections
               </CardTitle>
-              <CardDescription>Connect to any MT5 terminal profile and optionally auto-link EA folders on connect.</CardDescription>
+              <CardDescription>Bridge connectivity is derived from live EA heartbeats. Hub management controls folder linking and sync scope.</CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
-              <input
-                aria-label="Search terminals"
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                placeholder="Search terminal, broker, host…"
-                value={ui.searchTerm}
-                onChange={(event) => ui.setSearchTerm(event.target.value)}
-              />
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  aria-label="Search terminals"
+                  className="rounded-lg border border-slate-200 py-2 pl-9 pr-3 text-sm"
+                  placeholder="Search terminal, broker, EA instance…"
+                  value={ui.searchTerm}
+                  onChange={(event) => ui.setSearchTerm(event.target.value)}
+                />
+              </div>
               <Button
                 size="sm"
-                disabled={!canManage(ui.role) || !ui.selectedTerminalIds.length || action.isPending}
-                onClick={() => run("connect", { terminalIds: ui.selectedTerminalIds, autoLink: true })}
+                disabled={!permissions?.canConnect || !ui.selectedTerminalIds.length || action.isPending}
+                onClick={() => command("Connect selected terminals", "connect", { terminalIds: ui.selectedTerminalIds, autoLink: true })}
               >
                 <PlugZap className="mr-2 h-4 w-4" />
-                Connect selected
+                Manage selected
               </Button>
               <Button
                 size="sm"
                 variant="outline"
-                disabled={!canManage(ui.role) || !ui.selectedTerminalIds.length || action.isPending}
-                onClick={() => run("disconnect", { terminalIds: ui.selectedTerminalIds })}
+                disabled={!permissions?.canDisconnect || !ui.selectedTerminalIds.length || action.isPending}
+                onClick={() => command("Remove selected from hub management", "disconnect", { terminalIds: ui.selectedTerminalIds })}
               >
                 <Unplug className="mr-2 h-4 w-4" />
-                Disconnect
+                Unmanage
               </Button>
-              <Button size="sm" variant="outline" disabled={!canManage(ui.role) || action.isPending} onClick={() => run("sync-all")}>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!permissions?.canSyncAll || action.isPending}
+                onClick={() => command("Sync all managed terminals", "sync-all")}
+              >
                 <Link2 className="mr-2 h-4 w-4" />
-                Sync all connected
+                Sync managed
               </Button>
             </div>
           </div>
         </CardHeader>
         <CardContent className="overflow-x-auto">
-          <table className="w-full min-w-[1100px] text-left text-xs">
+          <table className="w-full min-w-[1200px] text-left text-xs">
             <thead className="border-y border-slate-100 bg-slate-50">
               <tr>
-                {["", "Terminal", "Broker / Account", "Connection", "EA link", "MT5 Experts path", "Actions"].map((head) => (
+                {["", "Terminal", "Broker / Account", "Bridge", "EA link", "Managed", "MT5 Experts path", "Actions"].map((head) => (
                   <th key={head} className="px-3 py-3 font-semibold uppercase text-slate-500">
                     {head}
                   </th>
@@ -234,12 +313,15 @@ export function EaTerminalHubDashboard() {
                   key={terminal.terminalId}
                   terminal={terminal}
                   selected={ui.selectedTerminalIds.includes(terminal.terminalId)}
-                  canManage={canManage(ui.role)}
-                  isActive={terminal.terminalId === data?.summary.activeTerminalId}
+                  permissions={permissions}
+                  isActive={terminal.terminalId === data.summary.activeTerminalId}
+                  isPending={action.isPending}
                   onToggle={() => ui.toggleTerminalSelection(terminal.terminalId)}
-                  onActivate={() => run("set-active", { terminalId: terminal.terminalId })}
-                  onConnect={() => run("connect", { terminalIds: [terminal.terminalId], autoLink: true })}
-                  onLink={() => run("link", { terminalId: terminal.terminalId })}
+                  onActivate={() => command("Set active terminal", "set-active", { terminalId: terminal.terminalId })}
+                  onConnect={() => command(`Manage ${terminal.terminalName}`, "connect", { terminalIds: [terminal.terminalId], autoLink: true })}
+                  onLink={() => command(`Link EA folder for ${terminal.terminalName}`, "link", { terminalId: terminal.terminalId })}
+                  onPreview={() => command(`Preview sync for ${terminal.terminalName}`, "preview-sync", { terminalId: terminal.terminalId })}
+                  onToggleAutoLink={(enabled) => command(`Update auto-link for ${terminal.terminalName}`, "toggle-auto-link", { terminalId: terminal.terminalId, enabled })}
                 />
               ))}
             </tbody>
@@ -254,7 +336,7 @@ export function EaTerminalHubDashboard() {
               <Cable className="h-5 w-5 text-teal-700" />
               Active terminal — {activeTerminal.terminalName}
             </CardTitle>
-            <CardDescription>Folder drift between Cacsms EA and this terminal Experts directory.</CardDescription>
+            <CardDescription>Folder drift between canonical Cacsms EA artifacts and this terminal&apos;s MT5 directories.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 lg:grid-cols-2">
             <div className="space-y-2 text-sm text-slate-700">
@@ -262,7 +344,13 @@ export function EaTerminalHubDashboard() {
                 <span className="font-semibold">MT5 Experts:</span> <span className="font-mono text-xs">{activeTerminal.mt5ExpertsPath}</span>
               </p>
               <p>
-                <span className="font-semibold">Bridge channel:</span> {activeTerminal.bridgeChannelId ?? "Not connected"}
+                <span className="font-semibold">MT5 Include:</span> <span className="font-mono text-xs">{activeTerminal.mt5IncludePath}</span>
+              </p>
+              <p>
+                <span className="font-semibold">EA instance:</span> {activeTerminal.eaInstanceId ?? "Not provisioned"}
+              </p>
+              <p>
+                <span className="font-semibold">Bridge heartbeat:</span> {activeTerminal.bridgeHeartbeatStatus ?? "No live heartbeat"}
               </p>
               <p>
                 <span className="font-semibold">Drift items:</span> {activeTerminal.driftFileCount}
@@ -280,11 +368,11 @@ export function EaTerminalHubDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(data?.drift ?? []).map((item) => (
-                    <tr key={item.fileName} className="border-t border-slate-100">
-                      <td className="px-3 py-2 font-mono">{item.fileName}</td>
+                  {(data.drift ?? []).map((item) => (
+                    <tr key={item.relativePath} className="border-t border-slate-100">
+                      <td className="px-3 py-2 font-mono">{item.relativePath}</td>
                       <td className="px-3 py-2">
-                        <Badge variant={toneVariant(item.status)}>{item.status}</Badge>
+                        <Badge variant={driftTone(item.status)}>{item.status}</Badge>
                       </td>
                     </tr>
                   ))}
@@ -295,53 +383,110 @@ export function EaTerminalHubDashboard() {
         </Card>
       ) : null}
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-lg">Register MT5 terminal profile</CardTitle>
-            <CardDescription>Add a custom terminal path to connect at any point.</CardDescription>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => ui.setShowRegisterForm(!ui.showRegisterForm)}>
-            {ui.showRegisterForm ? "Hide form" : "Add terminal"}
-          </Button>
-        </CardHeader>
-        {ui.showRegisterForm ? (
-          <CardContent className="grid gap-3 md:grid-cols-2">
-            {Object.entries(registerDraft).map(([key, value]) => (
-              <label key={key} className="text-sm text-slate-700">
-                <span className="mb-1 block font-semibold capitalize">{key.replace(/([A-Z])/g, " $1")}</span>
-                <input
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs"
-                  value={value}
-                  onChange={(event) => setRegisterDraft((draft) => ({ ...draft, [key]: event.target.value }))}
-                />
-              </label>
-            ))}
-            <div className="md:col-span-2">
-              <Button
-                disabled={!canManage(ui.role) || action.isPending}
-                onClick={() => {
-                  run("register-terminal", registerDraft);
-                  setRegisterDraft({
-                    terminalName: "",
-                    terminalExecutablePath: "C:\\MT5\\Custom\\terminal64.exe",
-                    brokerName: "",
-                    accountLogin: "",
-                    hostMachine: "LOCAL",
-                    region: "Local"
-                  });
-                }}
-              >
-                <Plug className="mr-2 h-4 w-4" />
-                Register terminal
-              </Button>
-            </div>
+      {syncPreview.length ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <ClipboardList className="h-5 w-5 text-teal-700" />
+              Sync preview
+            </CardTitle>
+            <CardDescription>Projected artifact changes before the next link operation.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="divide-y divide-slate-100 text-sm">
+              {syncPreview.map((item) => (
+                <li key={item.relativePath} className="flex items-center justify-between py-2">
+                  <span className="font-mono text-xs">{item.relativePath}</span>
+                  <Badge variant={item.action === "Create" ? "success" : "warning"}>
+                    {item.action} — {item.reason}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
           </CardContent>
-        ) : null}
-      </Card>
+        </Card>
+      ) : null}
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="text-lg">Register MT5 terminal profile</CardTitle>
+              <CardDescription>Add a custom terminal path for local folder linking. For production provisioning, use MT5 Control Center onboarding.</CardDescription>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => ui.setShowRegisterForm(!ui.showRegisterForm)}>
+              {ui.showRegisterForm ? "Hide form" : "Add terminal"}
+            </Button>
+          </CardHeader>
+          {ui.showRegisterForm ? (
+            <CardContent className="grid gap-3 md:grid-cols-2">
+              {Object.entries(registerDraft).map(([key, value]) => (
+                <label key={key} className="text-sm text-slate-700">
+                  <span className="mb-1 block font-semibold capitalize">{key.replace(/([A-Z])/g, " $1")}</span>
+                  <input
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs"
+                    value={value}
+                    onChange={(event) => setRegisterDraft((draft) => ({ ...draft, [key]: event.target.value }))}
+                  />
+                </label>
+              ))}
+              <div className="md:col-span-2">
+                <Button
+                  disabled={!permissions?.canRegister || action.isPending}
+                  onClick={() => {
+                    void command("Register terminal profile", "register-terminal", registerDraft).then(() => {
+                      setRegisterDraft({
+                        terminalName: "",
+                        terminalExecutablePath: "C:\\MT5\\Custom\\terminal64.exe",
+                        brokerName: "",
+                        accountLogin: "",
+                        hostMachine: "LOCAL",
+                        region: "Local"
+                      });
+                    });
+                  }}
+                >
+                  <Plug className="mr-2 h-4 w-4" />
+                  Register terminal
+                </Button>
+              </div>
+            </CardContent>
+          ) : null}
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <ShieldCheck className="h-5 w-5 text-teal-700" />
+              Audit trail
+            </CardTitle>
+            <CardDescription>Recent hub management actions.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-56 rounded-xl border border-slate-100">
+              <ul className="divide-y divide-slate-100 text-xs">
+                {data.audits.length ? (
+                  data.audits.map((entry) => (
+                    <li key={entry.id} className="px-3 py-2">
+                      <p className="font-semibold text-slate-900">{entry.action}</p>
+                      <p className="text-slate-600">
+                        {entry.entityId} · {entry.userId} · {new Date(entry.timestamp).toLocaleString()}
+                      </p>
+                    </li>
+                  ))
+                ) : (
+                  <li className="px-3 py-4 text-slate-500">No audit records yet.</li>
+                )}
+              </ul>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      </div>
 
       <Separator />
-      <p className="text-xs text-slate-500">Configure `CACSMS_EA_ROOT` in `apps/web/.env.local` if the system EA folder path differs on your host.</p>
+      <p className="text-xs text-slate-500">
+        Configure `CACSMS_EA_ROOT` and optionally `CACSMS_REPO_ROOT` in `apps/web/.env.local` when paths differ on your host. Bridge connectivity requires NexusBridgeEA attached with onboarding credentials.
+      </p>
     </div>
   );
 }
@@ -349,21 +494,27 @@ export function EaTerminalHubDashboard() {
 function TerminalRow({
   terminal,
   selected,
-  canManage,
+  permissions,
   isActive,
+  isPending,
   onToggle,
   onActivate,
   onConnect,
-  onLink
+  onLink,
+  onPreview,
+  onToggleAutoLink
 }: {
   terminal: Mt5TerminalLink;
   selected: boolean;
-  canManage: boolean;
+  permissions: ReturnType<typeof useEaTerminalHub>["data"] extends infer T ? (T extends { permissions: infer P } ? P : undefined) : undefined;
   isActive: boolean;
+  isPending: boolean;
   onToggle: () => void;
   onActivate: () => void;
   onConnect: () => void;
   onLink: () => void;
+  onPreview: () => void;
+  onToggleAutoLink: (enabled: boolean) => void;
 }) {
   return (
     <tr className={cn("border-b border-slate-100", isActive && "bg-teal-50/40")}>
@@ -372,7 +523,9 @@ function TerminalRow({
       </td>
       <td className="px-3 py-3">
         <p className="font-semibold text-slate-900">{terminal.terminalName}</p>
-        <p className="text-slate-500">{terminal.hostMachine} · {terminal.region}</p>
+        <p className="text-slate-500">
+          {terminal.hostMachine} · {terminal.region}
+        </p>
       </td>
       <td className="px-3 py-3">
         {terminal.brokerName}
@@ -380,21 +533,36 @@ function TerminalRow({
       </td>
       <td className="px-3 py-3">
         <Badge variant={toneVariant(terminal.connectionStatus)}>{terminal.connectionStatus}</Badge>
+        {terminal.bridgeHeartbeatStatus ? <p className="mt-1 text-[10px] text-slate-500">{terminal.bridgeHeartbeatStatus}</p> : null}
       </td>
       <td className="px-3 py-3">
         <Badge variant={toneVariant(terminal.linkStatus)}>{terminal.linkStatus}</Badge>
       </td>
+      <td className="px-3 py-3">
+        <Badge variant={terminal.operatorManaged ? "success" : "secondary"}>{terminal.operatorManaged ? "Yes" : "No"}</Badge>
+      </td>
       <td className="px-3 py-3 font-mono text-[11px] text-slate-600">{terminal.mt5ExpertsPath}</td>
       <td className="px-3 py-3">
         <div className="flex flex-wrap gap-1">
-          <Button size="sm" variant="outline" disabled={!canManage} onClick={onActivate}>
+          <Button size="sm" variant="outline" disabled={!permissions?.canSetActive || isPending} onClick={onActivate}>
             Focus
           </Button>
-          <Button size="sm" variant="outline" disabled={!canManage} onClick={onConnect}>
-            Connect
+          <Button size="sm" variant="outline" disabled={!permissions?.canConnect || isPending} onClick={onConnect}>
+            Manage
           </Button>
-          <Button size="sm" variant="outline" disabled={!canManage} onClick={onLink}>
+          <Button size="sm" variant="outline" disabled={!permissions?.canLink || isPending} onClick={onLink}>
             Link EA
+          </Button>
+          <Button size="sm" variant="outline" disabled={!permissions?.canPreviewSync || isPending} onClick={onPreview}>
+            Preview
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!permissions?.canConnect || isPending}
+            onClick={() => onToggleAutoLink(!terminal.autoLinkOnConnect)}
+          >
+            Auto-link {terminal.autoLinkOnConnect ? "On" : "Off"}
           </Button>
         </div>
       </td>

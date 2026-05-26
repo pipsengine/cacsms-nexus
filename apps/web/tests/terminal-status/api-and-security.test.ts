@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import {describe, expect, it, beforeEach } from "vitest";
+import { seedTerminalStatusStore } from "@/tests/helpers/seed-api-stores";
 
 import {
   buildTerminalStatusResponse,
@@ -10,6 +11,7 @@ import {
 } from "@/app/api/mt5/terminal-status/_lib/store";
 
 describe("terminal status domain and permissions", () => {
+  beforeEach(() => seedTerminalStatusStore());
   it("provides a terminal-focused operational response", () => {
     const response = buildTerminalStatusResponse("Infrastructure Admin");
     expect(response.kpis).toHaveLength(12);

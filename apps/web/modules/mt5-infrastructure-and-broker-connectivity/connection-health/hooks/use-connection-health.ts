@@ -38,9 +38,6 @@ export function useConnectionHealth() {
   const selectedComponentId = useConnectionHealthStore((s) => s.selectedComponentId);
 
   useEffect(() => {
-    const isMock = typeof window !== "undefined" && window.location.search.includes("mock=1");
-    if (isMock) return;
-
     const source = new EventSource("/api/mt5/connection-health/events-stream");
     source.addEventListener("connection-health-snapshot", (event) => {
       const payload = JSON.parse((event as MessageEvent).data) as { summary: unknown; components: unknown };

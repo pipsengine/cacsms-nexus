@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calculateRoutingHealth, duplicateProtection, evaluateRetrySafety, selectSmartRoute, validatePreRoute } from "@/modules/mt5-infrastructure-and-broker-connectivity/order-router/algorithms/order-router.algorithms";
-import { createOrderRouterSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/order-router/data/order-router.mock";
+import { createOrderRouterSeed } from "@/tests/fixtures/order-router.fixture";
 
 describe("Order Router safety algorithms", () => {
   it("scores route health and recommends a healthy execution channel", () => {

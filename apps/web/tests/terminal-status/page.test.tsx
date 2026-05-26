@@ -1,7 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildTerminalStatusResponse } from "@/app/api/mt5/terminal-status/_lib/store";
 import { TerminalStatusDashboard } from "@/modules/mt5-infrastructure-and-broker-connectivity/terminal-status/components/terminal-status-dashboard";
 
 vi.mock("recharts", () => ({
@@ -15,16 +14,21 @@ vi.mock("recharts", () => ({
   Tooltip: () => null
 }));
 
-vi.mock("@/modules/mt5-infrastructure-and-broker-connectivity/terminal-status/hooks/use-terminal-status", () => ({
-  useTerminalStatus: () => ({
-    data: buildTerminalStatusResponse("Read-Only Viewer"),
-    isLoading: false,
-    isError: false,
-    streamConnected: true,
-    refetch: vi.fn(),
-    action: { mutateAsync: vi.fn(), isPending: false }
-  })
-}));
+vi.mock("@/modules/mt5-infrastructure-and-broker-connectivity/terminal-status/hooks/use-terminal-status", async () => {
+  const { buildTerminalStatusResponse } = await import("@/app/api/mt5/terminal-status/_lib/store");
+  const { seedTerminalStatusStore } = await import("@/tests/helpers/seed-api-stores");
+  seedTerminalStatusStore();
+  return {
+    useTerminalStatus: () => ({
+      data: buildTerminalStatusResponse("Read-Only Viewer"),
+      isLoading: false,
+      isError: false,
+      streamConnected: true,
+      refetch: vi.fn(),
+      action: { mutateAsync: vi.fn(), isPending: false }
+    })
+  };
+});
 
 afterEach(cleanup);
 

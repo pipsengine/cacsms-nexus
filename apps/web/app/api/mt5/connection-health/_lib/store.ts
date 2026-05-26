@@ -50,8 +50,8 @@ const state = bindPersistedMt5State("connection-health", () => ({
   audits: [] as AuditRecord[]
 }));
 
-export function resetConnectionHealthState() {
-  const next = seed();
+export function resetConnectionHealthState(override?: ReturnType<typeof seed>) {
+  const next = override ?? seed();
   state.disabledUnsafeTrading = false;
   state.components = next.components;
   state.dependencyMap = next.dependencyMap;
@@ -124,7 +124,9 @@ function updateComponent(componentId: string, patch: Partial<ConnectionComponent
 
 function recomputeWorkflowAndMap() {
   state.workflow = createMockWorkflow(state.components);
-  state.dependencyMap = createMockDependencyMap(state.components);
+  if (state.components.length === 0) {
+    state.dependencyMap = createMockDependencyMap(state.components);
+  }
 }
 
 function applyDerivedIncidents() {

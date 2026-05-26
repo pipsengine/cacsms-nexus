@@ -48,8 +48,8 @@ const state = bindPersistedMt5State<EaMonitoringState>("ea-monitoring", () => ({
   lastSyncAt: new Date().toISOString()
 }));
 
-export function resetEaMonitoringState() {
-  const next = createEaMonitoringSeed();
+export function resetEaMonitoringState(override?: ReturnType<typeof createEaMonitoringSeed>) {
+  const next = override ?? createEaMonitoringSeed();
   state.instances = next.instances;
   state.commands = next.commands;
   state.bindings = next.bindings;

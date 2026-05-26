@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { seedExecutionLogsStore } from "@/tests/helpers/seed-api-stores";
 
 import { autoRemediate, diagnostics, executionLogsRole, exportLogs, listLogs, markReviewed, resetExecutionLogsState, sync } from "@/app/api/mt5/execution-logs/_lib/store";
 
 describe("Execution Logs API domain and security", () => {
-  beforeEach(() => resetExecutionLogsState());
+  beforeEach(() => seedExecutionLogsStore());
 
   it("defaults to read-only role when no header provided", () => {
     expect(executionLogsRole(new Request("http://localhost/api/mt5/execution-logs/summary"))).toBe("Read-Only Viewer");

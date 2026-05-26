@@ -1,22 +1,37 @@
+import { createSpreadMonitorSeed } from "@/tests/fixtures/spread-monitor.fixture";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { SpreadMonitorDashboard } from "@/modules/mt5-infrastructure-and-broker-connectivity/spread-monitor/components/spread-monitor-dashboard";
 import { useSpreadMonitorStore } from "@/modules/mt5-infrastructure-and-broker-connectivity/spread-monitor/stores/spread-monitor.store";
+import { installFetchMock, setupDashboardTestEnv, teardownDashboardTestEnv } from "../helpers/dashboard-test-env";
 
-afterEach(cleanup);
+const timestamp = new Date().toISOString();
+const spread = createSpreadMonitorSeed().spreads[0]!;
+
+afterEach(() => {
+  cleanup();
+  teardownDashboardTestEnv();
+});
 
 beforeEach(() => {
-  if (!(globalThis as any).ResizeObserver) {
-    (globalThis as any).ResizeObserver = class ResizeObserver {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    };
-  }
+  setupDashboardTestEnv();
   useSpreadMonitorStore.setState({ role: "Read-Only Viewer" });
-  window.history.pushState({}, "", "/mt5-infrastructure-and-broker-connectivity/spread-monitor?mock=1");
+  installFetchMock({
+    "/spread-monitor/summary": () => ({
+      meta: { timestamp, currentRole: "Read-Only Viewer", streamEndpoint: "/api/mt5/spread-monitor/events-stream" },
+      kpis: [],
+      spreadRiskScore: { score: 0, rating: "Excellent", factors: {} }
+    }),
+    "/spread-monitor/spreads": () => ({ meta: { timestamp, total: 1, page: 1, pageSize: 75 }, spreads: [spread] }),
+    "/spread-monitor/broker-comparison": () => ({ meta: { timestamp }, rows: [] }),
+    "/spread-monitor/trends": () => ({ meta: { timestamp }, points: [] }),
+    "/spread-monitor/thresholds": () => ({ meta: { timestamp, total: 0 }, thresholds: [] }),
+    "/spread-monitor/alerts": () => ({ meta: { timestamp, total: 0 }, alerts: [] }),
+    "/spread-monitor/logs": () => ({ meta: { timestamp, total: 0 }, logs: [] }),
+    "/spread-monitor/ai-diagnostics": () => ({ meta: { timestamp, total: 0 }, diagnostics: [] })
+  });
 });
 
 describe("Spread Monitor dashboard", () => {
@@ -35,7 +50,7 @@ describe("Spread Monitor dashboard", () => {
     expect(screen.getByRole("button", { name: "Run Spread Diagnostics" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Disable Unsafe Symbols" })).toBeDisabled();
 
-    expect((await screen.findAllByRole("button", { name: "EURUSD" })).length).toBeGreaterThan(0);
+    expect((await screen.findAllByRole("button", { name: spread.symbol })).length).toBeGreaterThan(0);
   }, 15000);
 
   it("searches the spread monitor table", async () => {
@@ -46,10 +61,10 @@ describe("Spread Monitor dashboard", () => {
       </QueryClientProvider>
     );
 
-    await screen.findAllByRole("button", { name: "EURUSD" });
-    fireEvent.change(screen.getByLabelText("Search spreads"), { target: { value: "IC Markets" } });
+    await screen.findAllByRole("button", { name: spread.symbol });
+    fireEvent.change(screen.getByLabelText("Search spreads"), { target: { value: spread.broker } });
 
     const table = within(screen.getByRole("table", { name: "Spread monitor table" }));
-    expect((await table.findAllByText("IC Markets")).length).toBeGreaterThan(0);
+    expect((await table.findAllByText(spread.broker)).length).toBeGreaterThan(0);
   }, 15000);
 });

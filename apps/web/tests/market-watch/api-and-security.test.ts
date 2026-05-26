@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import {describe, expect, it, beforeEach } from "vitest";
+import { seedMarketWatchStore } from "@/tests/helpers/seed-api-stores";
 import { audits, buildMarketWatchResponse, marketRole, refreshQuotes, runMarketDiagnostics, toggleWatchlist } from "@/app/api/mt5/market-watch/_lib/store";
 
 describe("Market Watch operational controls", () => {
+  beforeEach(() => seedMarketWatchStore());
   it("returns market quotes, sessions, alerts, movers, and diagnostics", () => {
     const response = buildMarketWatchResponse("Infrastructure Admin");
     expect(response.kpis).toHaveLength(8);

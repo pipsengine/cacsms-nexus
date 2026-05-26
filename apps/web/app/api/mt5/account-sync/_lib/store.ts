@@ -11,6 +11,21 @@ const state = bindPersistedMt5State("account-sync", () => ({
   audits: [] as AuditRecord[],
   lastSyncAt: new Date().toISOString()
 }));
+type AccountSyncSeed = ReturnType<typeof createAccountSyncSeed>;
+
+export function resetAccountSyncState(override?: AccountSyncSeed) {
+  const next = override ?? createAccountSyncSeed();
+  state.accounts = next.accounts;
+  state.positions = next.positions;
+  state.orders = next.orders;
+  state.reconciliations = next.reconciliations;
+  state.logs = next.logs;
+  state.exposures = next.exposures;
+  state.diagnostics = next.diagnostics;
+  state.audits = [];
+  state.lastSyncAt = new Date().toISOString();
+}
+
 export function accountRole(request?: Request): Mt5Role {
   return resolveMt5Role(request);
 }

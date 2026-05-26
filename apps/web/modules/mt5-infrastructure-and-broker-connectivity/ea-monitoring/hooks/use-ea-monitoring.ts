@@ -39,9 +39,6 @@ export function useEaMonitoring() {
   const logsFilter = useEaMonitoringStore((s) => s.logsFilter);
 
   useEffect(() => {
-    const isMock = typeof window !== "undefined" && window.location.search.includes("mock=1");
-    if (isMock) return;
-
     const source = new EventSource("/api/mt5/ea-monitoring/events-stream");
     source.addEventListener("ea-monitoring-snapshot", (event) => {
       const payload = JSON.parse((event as MessageEvent).data) as { summary: unknown };

@@ -35,9 +35,6 @@ export function useExecutionLogs() {
   const selectedLogId = useExecutionLogsStore((s) => s.selectedLogId);
 
   useEffect(() => {
-    const isMock = typeof window !== "undefined" && window.location.search.includes("mock=1");
-    if (isMock) return;
-
     const source = new EventSource("/api/mt5/execution-logs/events-stream");
     source.addEventListener("execution-logs-snapshot", (event) => {
       const payload = JSON.parse((event as MessageEvent).data) as { summary: unknown };

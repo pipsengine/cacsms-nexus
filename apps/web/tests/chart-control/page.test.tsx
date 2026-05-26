@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildChartControlResponse } from "@/app/api/mt5/chart-control/_lib/store";
 import { ChartControlDashboard } from "@/modules/mt5-infrastructure-and-broker-connectivity/chart-control/components/chart-control-dashboard";
 
 vi.mock("recharts", () => ({
@@ -18,9 +17,21 @@ vi.mock("recharts", () => ({
   Line: () => <div />,
   ReferenceLine: () => <div />
 }));
-vi.mock("@/modules/mt5-infrastructure-and-broker-connectivity/chart-control/hooks/use-chart-control", () => ({
-  useChartControl: () => ({ data: buildChartControlResponse("Read-Only Viewer"), isLoading: false, isError: false, streamConnected: true, refetch: vi.fn(), action: { mutateAsync: vi.fn(), isPending: false } })
-}));
+vi.mock("@/modules/mt5-infrastructure-and-broker-connectivity/chart-control/hooks/use-chart-control", async () => {
+  const { buildChartControlResponse } = await import("@/app/api/mt5/chart-control/_lib/store");
+  const { seedChartControlStore } = await import("@/tests/helpers/seed-api-stores");
+  seedChartControlStore();
+  return {
+    useChartControl: () => ({
+      data: buildChartControlResponse("Read-Only Viewer"),
+      isLoading: false,
+      isError: false,
+      streamConnected: true,
+      refetch: vi.fn(),
+      action: { mutateAsync: vi.fn(), isPending: false }
+    })
+  };
+});
 afterEach(cleanup);
 
 describe("Chart Control dashboard", () => {

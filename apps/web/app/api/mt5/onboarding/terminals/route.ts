@@ -1,5 +1,6 @@
 import { accounts, provisionAccountBinding } from "../../account-sync/_lib/store";
 import { provisionEaBridgeInstance, publicBridgeInstances } from "../../ea-bridge/_lib/store";
+import { provisionEaTerminalHubFromOnboarding } from "../../ea-terminal-hub/_lib/store";
 import { failure, ok } from "../../_lib/http";
 import { bindRegisteredTerminalAccount, getAccounts, getBroker, getRole, getTerminals, registerTerminal } from "../../_lib/store";
 import { provisionTerminalMonitor, terminalRecords } from "../../terminal-status/_lib/store";
@@ -45,6 +46,7 @@ export async function POST(request: Request) {
       timezone: input.timezone, terminalPath: input.terminalPath
     }, role, request);
     const pairing = provisionEaBridgeInstance({ terminal, accountId, eaName: input.eaName, symbolScope: input.symbolScope }, role, true, request);
+    provisionEaTerminalHubFromOnboarding({ terminal, terminalPath: input.terminalPath, eaInstanceId: pairing.instance.id }, role, request);
     const receipt: TerminalOnboardingReceipt = {
       terminal, accountId, eaInstanceId: pairing.instance.id, ingestionToken: pairing.ingestionToken, signingSecret: pairing.signingSecret,
       nexusBaseUrl: new URL(request.url).origin, state: "Awaiting Verified Heartbeat"

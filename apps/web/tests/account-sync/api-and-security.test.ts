@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach } from "vitest";
+import { seedAccountSyncStore } from "@/tests/helpers/seed-api-stores";
 import { accountRole, audits, buildAccountSyncResponse, reconcileAccount, setAccountTrading, syncAllAccounts, syncSelectedAccounts, syncTradingState } from "@/app/api/mt5/account-sync/_lib/store";
 
 describe("Account Sync operational controls", () => {
+  beforeEach(() => seedAccountSyncStore());
   it("returns synchronized operational sections", () => {
     const response = buildAccountSyncResponse("Infrastructure Admin");
     expect(response.kpis).toHaveLength(12);

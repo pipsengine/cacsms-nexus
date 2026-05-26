@@ -3,9 +3,21 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildOrderRouterResponse } from "@/app/api/mt5/order-router/_lib/store";
 import { OrderRouterDashboard } from "@/modules/mt5-infrastructure-and-broker-connectivity/order-router/components/order-router-dashboard";
 
-vi.mock("@/modules/mt5-infrastructure-and-broker-connectivity/order-router/hooks/use-order-router", () => ({
-  useOrderRouter: () => ({ data: buildOrderRouterResponse("Read-Only Viewer"), isLoading: false, isError: false, streamConnected: true, refetch: vi.fn(), action: { mutateAsync: vi.fn(), isPending: false } })
-}));
+vi.mock("@/modules/mt5-infrastructure-and-broker-connectivity/order-router/hooks/use-order-router", async () => {
+  const { buildOrderRouterResponse } = await import("@/app/api/mt5/order-router/_lib/store");
+  const { seedOrderRouterStore } = await import("@/tests/helpers/seed-api-stores");
+  seedOrderRouterStore();
+  return {
+    useOrderRouter: () => ({
+      data: buildOrderRouterResponse("Read-Only Viewer"),
+      isLoading: false,
+      isError: false,
+      streamConnected: true,
+      refetch: vi.fn(),
+      action: { mutateAsync: vi.fn(), isPending: false }
+    })
+  };
+});
 afterEach(cleanup);
 
 describe("Order Router dashboard", () => {

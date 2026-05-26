@@ -37,9 +37,6 @@ export function useMt5ErrorLogs() {
   const selectedErrorId = useMt5ErrorLogsStore((s) => s.selectedErrorId);
 
   useEffect(() => {
-    const isMock = typeof window !== "undefined" && window.location.search.includes("mock=1");
-    if (isMock) return;
-
     const source = new EventSource("/api/mt5/error-logs/events-stream");
     source.addEventListener("error-logs-snapshot", (event) => {
       const payload = JSON.parse((event as MessageEvent).data) as { summary: unknown };

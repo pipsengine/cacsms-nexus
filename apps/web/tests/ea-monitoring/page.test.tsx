@@ -4,18 +4,51 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { EaMonitoringDashboard } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-monitoring/components/ea-monitoring-dashboard";
 import { useEaMonitoringStore } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-monitoring/stores/ea-monitoring.store";
+import { installFetchMock, setupDashboardTestEnv, teardownDashboardTestEnv } from "../helpers/dashboard-test-env";
 
-afterEach(cleanup);
+const timestamp = new Date().toISOString();
+const instance = {
+  id: "ea-1",
+  eaId: "EA-1000",
+  eaName: "NexusBridgeEA",
+  eaVersion: "1.0.0",
+  buildNumber: "100",
+  terminal: "MT5-Terminal-1",
+  broker: "IC Markets",
+  accountLogin: "73018421",
+  strategyId: null,
+  strategyName: null,
+  strategyVersion: null,
+  symbolScope: ["EURUSD"],
+  timeframeScope: ["M15"],
+  connectionStatus: "Online",
+  heartbeatStatus: "Active",
+  bridgeStatus: "Connected",
+  commandChannelStatus: "Ready",
+  executionFeedbackStatus: "Ready",
+  tradingEnabled: true,
+  emergencyStopActive: false,
+  riskRulesLoaded: true,
+  accountTradingAllowed: true,
+  symbolTradingAllowed: true,
+  commandSuccessRate: 100,
+  failedCommands: 0,
+  averageLatencyMs: 120,
+  lastError: null,
+  riskLevel: "Low",
+  healthScore: 90,
+  readiness: { executionReady: true, blockers: [] },
+  updatedAt: timestamp,
+  createdAt: timestamp
+};
+
+afterEach(() => {
+  cleanup();
+  teardownDashboardTestEnv();
+});
 
 beforeEach(() => {
-  if (!(globalThis as any).ResizeObserver) {
-    (globalThis as any).ResizeObserver = class ResizeObserver {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    };
-  }
-
+  setupDashboardTestEnv();
   useEaMonitoringStore.setState({
     role: "Read-Only Viewer",
     searchTerm: "",
@@ -27,8 +60,22 @@ beforeEach(() => {
     showDetailPanel: true,
     logsFilter: "All"
   } as any);
-
-  window.history.pushState({}, "", "/mt5-infrastructure-and-broker-connectivity/ea-monitoring?mock=1");
+  installFetchMock({
+    "/ea-monitoring/summary": () => ({
+      meta: { timestamp, currentRole: "Read-Only Viewer", streamEndpoint: "/api/mt5/ea-monitoring/events-stream" },
+      kpis: [],
+      eaHealthScore: { score: 0, rating: "Critical", factors: {} }
+    }),
+    "/ea-monitoring/workflow": () => ({ meta: { timestamp }, workflow: [] }),
+    "/ea-monitoring/instances": () => ({ meta: { timestamp, total: 1, page: 1, pageSize: 75 }, instances: [instance] }),
+    "/ea-monitoring/commands": () => ({ meta: { timestamp, total: 0 }, commands: [] }),
+    "/ea-monitoring/strategy-bindings": () => ({ meta: { timestamp, total: 0 }, bindings: [] }),
+    "/ea-monitoring/logs": () => ({ meta: { timestamp, total: 0 }, logs: [] }),
+    "/ea-monitoring/exceptions": () => ({ meta: { timestamp, total: 0 }, exceptions: [] }),
+    "/ea-monitoring/analytics": () => ({ meta: { timestamp, total: 0 }, points: [] }),
+    "/ea-monitoring/ai-diagnostics": () => ({ meta: { timestamp, total: 0 }, diagnostics: [] }),
+    "/ea-monitoring/audit": () => ({ meta: { timestamp, total: 0 }, audit: [] })
+  });
 });
 
 describe("EA Monitoring dashboard", () => {
@@ -69,4 +116,3 @@ describe("EA Monitoring dashboard", () => {
     expect(matches.length).toBeGreaterThan(0);
   }, 15000);
 });
-

@@ -1,11 +1,22 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildAccountSyncResponse } from "@/app/api/mt5/account-sync/_lib/store";
 import { AccountSyncDashboard } from "@/modules/mt5-infrastructure-and-broker-connectivity/account-sync/components/account-sync-dashboard";
 
-vi.mock("@/modules/mt5-infrastructure-and-broker-connectivity/account-sync/hooks/use-account-sync", () => ({
-  useAccountSync: () => ({ data: buildAccountSyncResponse("Read-Only Viewer"), isLoading: false, isError: false, streamConnected: true, refetch: vi.fn(), action: { mutateAsync: vi.fn(), isPending: false } })
-}));
+vi.mock("@/modules/mt5-infrastructure-and-broker-connectivity/account-sync/hooks/use-account-sync", async () => {
+  const { buildAccountSyncResponse } = await import("@/app/api/mt5/account-sync/_lib/store");
+  const { seedAccountSyncStore } = await import("@/tests/helpers/seed-api-stores");
+  seedAccountSyncStore();
+  return {
+    useAccountSync: () => ({
+      data: buildAccountSyncResponse("Read-Only Viewer"),
+      isLoading: false,
+      isError: false,
+      streamConnected: true,
+      refetch: vi.fn(),
+      action: { mutateAsync: vi.fn(), isPending: false }
+    })
+  };
+});
 afterEach(cleanup);
 
 describe("Account Sync dashboard", () => {

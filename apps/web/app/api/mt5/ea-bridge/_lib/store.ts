@@ -38,6 +38,17 @@ const state = bindPersistedMt5State("ea-bridge", () => ({
   usedNonces: new Set(seed.messages.map((message) => message.nonce))
 }));
 const issuedCredentials = new Map<string, { ingestionTokenHash: string; signingSecret: string }>();
+
+export function resetEaBridgeState(override?: ReturnType<typeof createEaBridgeSeed>) {
+  const next = override ?? createEaBridgeSeed();
+  for (const key of Object.keys(next) as (keyof typeof next)[]) {
+    (state as Record<string, unknown>)[key as string] = next[key];
+  }
+  state.audits = [];
+  state.lastSyncAt = new Date().toISOString();
+  state.usedNonces = new Set(next.messages.map((message) => message.nonce));
+}
+
 export function eaBridgeRole(request?: Request): Mt5Role {
   return resolveMt5Role(request);
 }
@@ -476,9 +487,9 @@ export function buildEaBridgeResponse(role: Mt5Role = "Infrastructure Admin"): E
   const now = new Date().toISOString();
   const deliveredCommands = state.commands.filter((command) => command.deliveryStatus === "Delivered").length;
   const successfulCommands = state.commands.filter((command) => command.executionStatus === "Executed").length;
-  const averageLatency = Math.round(instances.reduce((sum, instance) => sum + instance.averageLatencyMs, 0) / instances.length);
-  const healthyHeartbeat = instances.filter((instance) => instance.heartbeatStatus === "Healthy").length / instances.length * 100;
-  const authenticated = state.sessions.filter((session) => session.authStatus === "Authenticated").length / state.sessions.length * 100;
+  const averageLatency = instances.length ? Math.round(instances.reduce((sum, instance) => sum + instance.averageLatencyMs, 0) / instances.length) : 0;
+  const healthyHeartbeat = instances.length ? instances.filter((instance) => instance.heartbeatStatus === "Healthy").length / instances.length * 100 : 0;
+  const authenticated = state.sessions.length ? state.sessions.filter((session) => session.authStatus === "Authenticated").length / state.sessions.length * 100 : 0;
   const feedback = state.messages.filter((message) => message.messageType === "Trade Execution Result" && message.status === "Delivered").length / Math.max(1, deliveredCommands) * 100;
   const bridgeHealth = calculateBridgeHealth({
     heartbeatPercent: healthyHeartbeat, authenticationPercent: authenticated, messages: state.messages, averageLatencyMs: averageLatency,
@@ -486,12 +497,19 @@ export function buildEaBridgeResponse(role: Mt5Role = "Infrastructure Admin"): E
     errorCount: state.logs.filter((log) => !log.resolved && log.severity === "Critical").length
   });
   const delivery = calculateDeliveryReliability(state.messages);
+  const deliveredMessages = state.messages.filter((item) => item.deliveredAt);
+  const lastSuccessfulMessage = deliveredMessages.length
+    ? new Date(Math.max(...deliveredMessages.map((item) => new Date(item.deliveredAt as string).getTime()))).toLocaleTimeString()
+    : "None";
+  const aiConfidence = state.diagnostics.length
+    ? Math.round(state.diagnostics.reduce((sum, item) => sum + item.confidenceScore, 0) / state.diagnostics.length * 100)
+    : 0;
   const workflowTitles = ["MT5 EA", "Bridge Authentication", "Heartbeat Channel", "Market Data Push", "Account Snapshot", "Signal Receiver", "Risk Validation", "Trade Command Router", "Execution Feedback", "Audit Log"];
   return {
     meta: { timestamp: now, currentRole: role, streamEndpoint: "/api/mt5/ea-bridge/events-stream", monitoringMode: "Autonomous Secure Bridge" },
     kpis: [
       { label: "Active EA Instances", value: String(instances.filter((item) => item.connectionStatus !== "Offline").length), status: "Healthy", detail: "Registered active agents", updatedAt: now },
-      { label: "Connected Terminals", value: `${instances.filter((item) => item.connectionStatus === "Healthy").length}/${instances.length}`, status: "Degraded", detail: "Validated terminal bindings", updatedAt: now },
+      { label: "Connected Terminals", value: instances.length ? `${instances.filter((item) => item.connectionStatus === "Healthy").length}/${instances.length}` : "0/0", status: instances.length ? "Degraded" : "Inactive", detail: instances.length ? "Validated terminal bindings" : "No terminals linked", updatedAt: now },
       { label: "Live Bridge Sessions", value: String(state.sessions.filter((session) => session.status !== "Offline").length), status: "Healthy", detail: "Authenticated or monitored sessions", updatedAt: now },
       { label: "Message Throughput", value: `${state.sessions.reduce((sum, session) => sum + session.messageRatePerMinute, 0).toLocaleString()}/min`, status: "Healthy", detail: "Inbound and outbound events", updatedAt: now },
       { label: "Failed Messages", value: String(delivery.failed), status: delivery.failed ? "Critical" : "Healthy", detail: "Rejected or queued messages", updatedAt: now },
@@ -499,9 +517,9 @@ export function buildEaBridgeResponse(role: Mt5Role = "Infrastructure Admin"): E
       { label: "Trade Command Success Rate", value: `${Math.round(successfulCommands / Math.max(1, state.commands.length) * 100)}%`, status: "Degraded", detail: "Commands executed by MT5", updatedAt: now },
       { label: "Market Data Stream Health", value: `${delivery.reliability}%`, status: delivery.reliability >= 75 ? "Healthy" : "Degraded", detail: "Signed message delivery reliability", updatedAt: now },
       { label: "Authentication Failures", value: String(instances.reduce((sum, item) => sum + item.failedAuthenticationAttempts, 0)), status: "Critical", detail: "Token/session rejects", updatedAt: now },
-      { label: "Last Successful Message", value: new Date(Math.max(...state.messages.filter((item) => item.deliveredAt).map((item) => new Date(item.deliveredAt as string).getTime()))).toLocaleTimeString(), status: "Healthy", detail: "Confirmed delivery", updatedAt: now },
+      { label: "Last Successful Message", value: lastSuccessfulMessage, status: deliveredMessages.length ? "Healthy" : "Inactive", detail: "Confirmed delivery", updatedAt: now },
       { label: "Bridge Risk Level", value: bridgeHealth.rating, status: bridgeHealth.score >= 75 ? "Healthy" : bridgeHealth.score >= 60 ? "Degraded" : "Critical", detail: `${bridgeHealth.score}/100 score`, updatedAt: now },
-      { label: "AI Confidence Score", value: `${Math.round(state.diagnostics.reduce((sum, item) => sum + item.confidenceScore, 0) / state.diagnostics.length * 100)}%`, status: "Syncing", detail: "AI bridge diagnosis", updatedAt: now }
+      { label: "AI Confidence Score", value: `${aiConfidence}%`, status: state.diagnostics.length ? "Syncing" : "Inactive", detail: "AI bridge diagnosis", updatedAt: now }
     ],
     bridgeHealth,
     workflow: workflowTitles.map((title, index) => ({

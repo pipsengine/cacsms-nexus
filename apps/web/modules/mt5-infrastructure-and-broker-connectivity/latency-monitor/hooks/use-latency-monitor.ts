@@ -36,9 +36,6 @@ export function useLatencyMonitor() {
   const alertFilter = useLatencyMonitorStore((s) => s.alertFilter);
 
   useEffect(() => {
-    const isMock = typeof window !== "undefined" && window.location.search.includes("mock=1");
-    if (isMock) return;
-
     const source = new EventSource("/api/mt5/latency-monitor/events-stream");
     source.addEventListener("latency-monitor-snapshot", (event) => {
       const payload = JSON.parse((event as MessageEvent).data) as { summary: unknown; metrics: unknown; thresholds: unknown; alerts: unknown };

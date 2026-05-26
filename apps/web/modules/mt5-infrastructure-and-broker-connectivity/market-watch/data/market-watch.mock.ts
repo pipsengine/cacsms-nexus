@@ -1,27 +1,7 @@
-import type { MarketDiagnostic, MarketInstrument, MarketSession } from "../types/market-watch.types";
-
-const ago = (seconds: number) => new Date(Date.now() - seconds * 1000).toISOString();
-
 export function createMarketWatchSeed() {
-  const instruments: MarketInstrument[] = [
-    { id: "mw-eurusd", symbol: "EURUSD", description: "Euro / US Dollar", assetClass: "Forex", brokerName: "IC Markets", bid: 1.08462, ask: 1.08464, digits: 5, point: 0.00001, dailyOpen: 1.08291, dailyHigh: 1.08604, dailyLow: 1.08176, volume: 184230, volatilityPercent: 0.41, spreadBaselinePoints: 2, latencyMs: 34, session: "London / New York", marketOpen: true, lastTickAt: ago(1), feedActive: true, watchlisted: true, tradeEnabled: true, trend: [1.0829, 1.0832, 1.083, 1.0839, 1.0842, 1.084, 1.08463] },
-    { id: "mw-gbpusd", symbol: "GBPUSD", description: "British Pound / US Dollar", assetClass: "Forex", brokerName: "IC Markets", bid: 1.27491, ask: 1.27495, digits: 5, point: 0.00001, dailyOpen: 1.27124, dailyHigh: 1.27602, dailyLow: 1.27018, volume: 126510, volatilityPercent: 0.55, spreadBaselinePoints: 3, latencyMs: 37, session: "London / New York", marketOpen: true, lastTickAt: ago(2), feedActive: true, watchlisted: true, tradeEnabled: true, trend: [1.2712, 1.272, 1.2726, 1.2738, 1.2734, 1.2745, 1.27493] },
-    { id: "mw-usdjpy", symbol: "USDJPY", description: "US Dollar / Japanese Yen", assetClass: "Forex", brokerName: "Pepperstone", bid: 156.442, ask: 156.451, digits: 3, point: 0.001, dailyOpen: 156.718, dailyHigh: 156.93, dailyLow: 156.311, volume: 151988, volatilityPercent: 0.38, spreadBaselinePoints: 7, latencyMs: 81, session: "Tokyo / London", marketOpen: true, lastTickAt: ago(4), feedActive: true, watchlisted: false, tradeEnabled: true, trend: [156.72, 156.64, 156.58, 156.61, 156.49, 156.47, 156.446] },
-    { id: "mw-xauusd", symbol: "XAUUSD", description: "Gold Spot / US Dollar", assetClass: "Metal", brokerName: "IC Markets", bid: 2384.18, ask: 2384.42, digits: 2, point: 0.01, dailyOpen: 2368.22, dailyHigh: 2391.8, dailyLow: 2362.5, volume: 89432, volatilityPercent: 1.92, spreadBaselinePoints: 16, latencyMs: 43, session: "Global Metals", marketOpen: true, lastTickAt: ago(1), feedActive: true, watchlisted: true, tradeEnabled: true, trend: [2368.2, 2370.8, 2378.1, 2374.6, 2380.3, 2387.2, 2384.3] },
-    { id: "mw-nas100", symbol: "NAS100", description: "Nasdaq 100 Cash", assetClass: "Index", brokerName: "FTMO", bid: 18854.1, ask: 18862.9, digits: 1, point: 0.1, dailyOpen: 18701.4, dailyHigh: 18890.2, dailyLow: 18674.8, volume: 48711, volatilityPercent: 2.74, spreadBaselinePoints: 22, latencyMs: 412, session: "New York", marketOpen: true, lastTickAt: ago(94), feedActive: false, watchlisted: true, tradeEnabled: false, trend: [18701, 18788, 18804, 18866, 18831, 18854, 18854] },
-    { id: "mw-us30", symbol: "US30", description: "Dow Jones Cash", assetClass: "Index", brokerName: "Pepperstone", bid: 39442.8, ask: 39446.2, digits: 1, point: 0.1, dailyOpen: 39362.6, dailyHigh: 39488.4, dailyLow: 39291.3, volume: 39610, volatilityPercent: 0.84, spreadBaselinePoints: 28, latencyMs: 73, session: "New York", marketOpen: true, lastTickAt: ago(3), feedActive: true, watchlisted: false, tradeEnabled: true, trend: [39363, 39392, 39371, 39412, 39434, 39420, 39444] },
-    { id: "mw-brent", symbol: "UKOIL", description: "Brent Crude Oil", assetClass: "Energy", brokerName: "Eightcap", bid: 82.37, ask: 82.43, digits: 2, point: 0.01, dailyOpen: 83.02, dailyHigh: 83.15, dailyLow: 82.2, volume: 22018, volatilityPercent: 1.24, spreadBaselinePoints: 4, latencyMs: 98, session: "London Energy", marketOpen: true, lastTickAt: ago(21), feedActive: true, watchlisted: false, tradeEnabled: true, trend: [83.02, 82.94, 82.72, 82.81, 82.54, 82.48, 82.4] },
-    { id: "mw-btcusd", symbol: "BTCUSD", description: "Bitcoin / US Dollar", assetClass: "Crypto", brokerName: "Eightcap", bid: 68340.2, ask: 68358.7, digits: 1, point: 0.1, dailyOpen: 67100.4, dailyHigh: 68722.3, dailyLow: 66682.1, volume: 12044, volatilityPercent: 3.61, spreadBaselinePoints: 145, latencyMs: 106, session: "24 / 7", marketOpen: true, lastTickAt: ago(5), feedActive: true, watchlisted: true, tradeEnabled: true, trend: [67100, 67452, 67088, 67984, 68240, 68101, 68349] }
-  ];
-  const sessions: MarketSession[] = [
-    { name: "Sydney", status: "Inactive", opensAt: "21:00 UTC", closesAt: "06:00 UTC", instrumentsLive: 0, liquidityScore: 36, note: "Next regional open" },
-    { name: "Tokyo", status: "Healthy", opensAt: "00:00 UTC", closesAt: "09:00 UTC", instrumentsLive: 3, liquidityScore: 71, note: "JPY depth stable" },
-    { name: "London", status: "Healthy", opensAt: "07:00 UTC", closesAt: "16:00 UTC", instrumentsLive: 6, liquidityScore: 94, note: "Peak FX liquidity" },
-    { name: "New York", status: "Watch", opensAt: "12:00 UTC", closesAt: "21:00 UTC", instrumentsLive: 7, liquidityScore: 88, note: "Index volatility elevated" }
-  ];
-  const diagnostics: MarketDiagnostic[] = [
-    { id: "market-diag-nas", instrumentId: "mw-nas100", issue: "NAS100 quote stream offline", severity: "Critical", rootCause: "FTMO session lost quote delivery after elevated gateway latency.", tradingImpact: "Displayed index pricing is stale and cannot support execution.", recommendation: "Retain the execution block, reconnect the broker stream, and require fresh ticks.", confidenceScore: 0.98, autoFixEligible: true, createdAt: ago(86) },
-    { id: "market-diag-oil", instrumentId: "mw-brent", issue: "UKOIL spread expansion", severity: "Warning", rootCause: "Liquidity thinned during energy session transition.", tradingImpact: "Immediate entries may incur excess transaction cost.", recommendation: "Delay nonessential routing until spread returns to baseline.", confidenceScore: 0.89, autoFixEligible: false, createdAt: ago(20) }
-  ];
-  return { instruments, sessions, diagnostics };
+  return {
+    instruments: [],
+    sessions: [],
+    diagnostics: []
+  };
 }

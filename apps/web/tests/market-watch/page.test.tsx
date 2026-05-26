@@ -1,11 +1,22 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildMarketWatchResponse } from "@/app/api/mt5/market-watch/_lib/store";
 import { MarketWatchDashboard } from "@/modules/mt5-infrastructure-and-broker-connectivity/market-watch/components/market-watch-dashboard";
 
-vi.mock("@/modules/mt5-infrastructure-and-broker-connectivity/market-watch/hooks/use-market-watch", () => ({
-  useMarketWatch: () => ({ data: buildMarketWatchResponse("Read-Only Viewer"), isLoading: false, isError: false, streamConnected: true, refetch: vi.fn(), action: { mutateAsync: vi.fn(), isPending: false } })
-}));
+vi.mock("@/modules/mt5-infrastructure-and-broker-connectivity/market-watch/hooks/use-market-watch", async () => {
+  const { buildMarketWatchResponse } = await import("@/app/api/mt5/market-watch/_lib/store");
+  const { seedMarketWatchStore } = await import("@/tests/helpers/seed-api-stores");
+  seedMarketWatchStore();
+  return {
+    useMarketWatch: () => ({
+      data: buildMarketWatchResponse("Read-Only Viewer"),
+      isLoading: false,
+      isError: false,
+      streamConnected: true,
+      refetch: vi.fn(),
+      action: { mutateAsync: vi.fn(), isPending: false }
+    })
+  };
+});
 afterEach(cleanup);
 
 describe("Market Watch dashboard", () => {

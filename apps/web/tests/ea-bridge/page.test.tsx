@@ -1,7 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildEaBridgeResponse } from "@/app/api/mt5/ea-bridge/_lib/store";
 import { EaBridgeDashboard } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-bridge/components/ea-bridge-dashboard";
 
 vi.mock("recharts", () => ({
@@ -13,16 +12,21 @@ vi.mock("recharts", () => ({
   Tooltip: () => null
 }));
 
-vi.mock("@/modules/mt5-infrastructure-and-broker-connectivity/ea-bridge/hooks/use-ea-bridge", () => ({
-  useEaBridge: () => ({
-    data: buildEaBridgeResponse("Read-Only Viewer"),
-    isLoading: false,
-    isError: false,
-    streamConnected: true,
-    refetch: vi.fn(),
-    action: { mutateAsync: vi.fn(), isPending: false }
-  })
-}));
+vi.mock("@/modules/mt5-infrastructure-and-broker-connectivity/ea-bridge/hooks/use-ea-bridge", async () => {
+  const { buildEaBridgeResponse } = await import("@/app/api/mt5/ea-bridge/_lib/store");
+  const { seedEaBridgeStore } = await import("@/tests/helpers/seed-api-stores");
+  seedEaBridgeStore();
+  return {
+    useEaBridge: () => ({
+      data: buildEaBridgeResponse("Read-Only Viewer"),
+      isLoading: false,
+      isError: false,
+      streamConnected: true,
+      refetch: vi.fn(),
+      action: { mutateAsync: vi.fn(), isPending: false }
+    })
+  };
+});
 
 afterEach(cleanup);
 

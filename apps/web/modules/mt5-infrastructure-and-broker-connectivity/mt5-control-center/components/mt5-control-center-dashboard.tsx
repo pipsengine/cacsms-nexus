@@ -69,8 +69,13 @@ export function Mt5ControlCenterDashboard() {
     return <div className="mx-auto max-w-[1800px] px-4 py-6 text-sm text-slate-600">Loading MT5 infrastructure telemetry...</div>;
   }
   const data = query.data;
-  const targetTerminal = data.terminals.find((terminal) => terminal.status === "Critical") ?? data.terminals[0];
+  const targetTerminal = data.terminals.find((terminal) => terminal.status === "Critical") ?? data.terminals[0] ?? null;
+  const infrastructureStatus = data.kpis.at(-1)?.status ?? "Inactive";
   const invoke = async (label: string, path: string, body?: unknown) => {
+    if (!path) {
+      setNotice("No infrastructure target is available for this action yet.");
+      return;
+    }
     setNotice(null);
     try {
       await query.action.mutateAsync({ path, body });
@@ -93,8 +98,8 @@ export function Mt5ControlCenterDashboard() {
     }
   };
   const actions = [
-    { label: "Sync Brokers", path: "/api/mt5/brokers/sync", icon: DatabaseZap, allowed: data.permissions.canSync },
-    { label: "Restart Terminal", path: `/api/mt5/terminals/${targetTerminal.id}/restart`, icon: RotateCcw, allowed: data.permissions.canRestart },
+    { label: "Sync Brokers", path: "/api/mt5/brokers/sync", icon: DatabaseZap, allowed: data.permissions.canSync && data.brokers.length > 0 },
+    { label: "Restart Terminal", path: targetTerminal ? `/api/mt5/terminals/${targetTerminal.id}/restart` : "", icon: RotateCcw, allowed: data.permissions.canRestart && Boolean(targetTerminal) },
     { label: "Run Diagnostics", path: "/api/mt5/diagnostics/run", icon: Stethoscope, allowed: data.permissions.canRestart }
   ];
 
@@ -107,7 +112,7 @@ export function Mt5ControlCenterDashboard() {
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-3xl font-semibold tracking-tight text-slate-950">MT5 Control Center</h1>
               <Badge variant={query.streamConnected ? "success" : "warning"}><Activity className="mr-1 h-3 w-3" />{query.streamConnected ? "Live stream" : "Reconnecting"}</Badge>
-              <Badge variant={statusVariant[data.kpis[9].status]}>{data.connectionHealth.score}/100 {data.connectionHealth.rating}</Badge>
+              <Badge variant={statusVariant[infrastructureStatus]}>{data.connectionHealth.score}/100 {data.connectionHealth.rating}</Badge>
             </div>
             <p className="mt-2 max-w-4xl text-sm text-slate-600">Centralized control room for MT5 terminals, broker sessions, execution gateways, and trading infrastructure health.</p>
             <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
@@ -174,11 +179,11 @@ export function Mt5ControlCenterDashboard() {
                   </label>
                 ))}
                 <label className="text-xs font-semibold text-slate-600">Broker
-                  <select value={onboarding.brokerId} onChange={(event) => {
+                  <select value={onboarding.brokerId} disabled={!data.brokers.length} onChange={(event) => {
                     const selected = data.brokers.find((broker) => broker.id === event.target.value);
                     if (selected) setOnboarding((value) => ({ ...value, brokerId: selected.id, brokerName: selected.brokerName, serverName: selected.mt5ServerName }));
-                  }} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 font-normal text-slate-900">
-                    {data.brokers.map((broker) => <option key={broker.id} value={broker.id}>{broker.brokerName}</option>)}
+                  }} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 font-normal text-slate-900 disabled:bg-slate-50">
+                    {data.brokers.length ? data.brokers.map((broker) => <option key={broker.id} value={broker.id}>{broker.brokerName}</option>) : <option value="">No brokers registered</option>}
                   </select>
                 </label>
                 <label className="text-xs font-semibold text-slate-600">Server<input readOnly value={onboarding.serverName} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 font-normal" /></label>
@@ -233,7 +238,7 @@ export function Mt5ControlCenterDashboard() {
           <table className="min-w-[1220px] w-full text-left text-xs">
             <thead className="border-y border-slate-100 bg-slate-50 text-slate-500"><tr>{["Terminal ID", "Broker / Server", "Account", "Status", "Version", "CPU", "Memory", "Disk", "Latency", "Uptime", "Heartbeat", "Actions"].map((head) => <th key={head} className="px-3 py-3 font-semibold uppercase">{head}</th>)}</tr></thead>
             <tbody>
-              {data.terminals.map((terminal) => (
+              {data.terminals.length ? data.terminals.map((terminal) => (
                 <tr key={terminal.id} className="border-b border-slate-100">
                   <td className="px-3 py-3 font-semibold text-slate-950">{terminal.terminalName}<p className="font-normal text-slate-500">{terminal.id}</p></td>
                   <td className="px-3 py-3">{terminal.brokerName}<p className="text-slate-500">{terminal.serverName}</p></td>
@@ -245,7 +250,9 @@ export function Mt5ControlCenterDashboard() {
                   <td className="px-3 py-3">{Math.floor(terminal.uptimeSeconds / 3600)}h</td><td className="px-3 py-3">{time(terminal.lastHeartbeatAt)}</td>
                   <td className="px-3 py-3"><Button size="sm" variant="outline" disabled={!data.permissions.canRestart} onClick={() => invoke("Terminal restart", `/api/mt5/terminals/${terminal.id}/restart`)}>Restart</Button></td>
                 </tr>
-              ))}
+              )) : (
+                <tr><td colSpan={12} className="px-3 py-8 text-center text-sm text-slate-500">No terminals registered. Use Terminal Onboarding to provision your first MT5 connection.</td></tr>
+              )}
             </tbody>
           </table>
         </CardContent>
@@ -255,7 +262,7 @@ export function Mt5ControlCenterDashboard() {
         <Card>
           <SectionTitle title="Broker Connectivity" description="Routing quality, feeds, login health, and reliability ranking." icon={Network} />
           <CardContent className="grid gap-3 md:grid-cols-3">
-            {data.brokers.map((broker) => (
+            {data.brokers.length ? data.brokers.map((broker) => (
               <div key={broker.id} className="rounded-xl border border-slate-200 p-3.5">
                 <div className="flex justify-between gap-2"><div><p className="font-semibold text-slate-950">{broker.brokerName}</p><p className="text-xs text-slate-500">{broker.mt5ServerName}</p></div><Status value={broker.status} /></div>
                 <p className="mt-3 text-xs text-slate-500">{broker.serverRegion} | {broker.connectionMode}</p>
@@ -267,9 +274,9 @@ export function Mt5ControlCenterDashboard() {
                 <p className="mt-3 text-xs text-slate-500">Login: <span className={broker.loginHealth === "Critical" ? "text-red-700" : "text-emerald-700"}>{broker.loginHealth}</span></p>
                 <p className="mt-2 line-clamp-2 text-[11px] text-slate-500">Incident: {broker.lastIncident ?? "No current incidents"}</p>
               </div>
-            ))}
+            )) : <p className="md:col-span-3 rounded-xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">No brokers registered yet.</p>}
             <div className="md:col-span-3 grid gap-2 rounded-xl bg-slate-50 p-3 text-xs sm:grid-cols-4">
-              <p>Best execution<br /><strong>{data.brokerRanking.bestForExecution}</strong></p><p>Best data quality<br /><strong>{data.brokerRanking.bestForDataQuality}</strong></p><p>Risky broker<br /><strong className="text-red-700">{data.brokerRanking.riskyBroker}</strong></p><p>Monitor<br /><strong className="text-amber-700">{data.brokerRanking.requiresMonitoring.join(", ")}</strong></p>
+              <p>Best execution<br /><strong>{data.brokerRanking.bestForExecution}</strong></p><p>Best data quality<br /><strong>{data.brokerRanking.bestForDataQuality}</strong></p><p>Risky broker<br /><strong className="text-red-700">{data.brokerRanking.riskyBroker}</strong></p><p>Monitor<br /><strong className="text-amber-700">{data.brokerRanking.requiresMonitoring.join(", ") || "None"}</strong></p>
             </div>
           </CardContent>
         </Card>
@@ -293,7 +300,7 @@ export function Mt5ControlCenterDashboard() {
         <CardContent className="overflow-x-auto">
           <table className="min-w-[980px] w-full text-left text-xs">
             <thead className="border-y border-slate-100 bg-slate-50 text-slate-500"><tr>{["Account", "Broker", "Currency", "Balance", "Equity", "Margin", "Free Margin", "Leverage", "Trading", "Sync", "Last Sync"].map((head) => <th className="px-3 py-3 font-semibold uppercase" key={head}>{head}</th>)}</tr></thead>
-            <tbody>{data.accounts.map((account) => <tr className="border-b border-slate-100" key={account.id}><td className="px-3 py-3 font-semibold">{account.accountLogin}<p className="font-normal text-slate-500">{account.accountType}</p></td><td className="px-3 py-3">{account.brokerName}</td><td className="px-3 py-3">{account.currency}</td><td className="px-3 py-3">{money(account.balance, account.currency)}</td><td className="px-3 py-3">{money(account.equity, account.currency)}</td><td className="px-3 py-3">{money(account.margin, account.currency)}</td><td className="px-3 py-3">{money(account.freeMargin, account.currency)}</td><td className="px-3 py-3">{account.leverage}</td><td className="px-3 py-3"><Badge variant={account.tradeAllowed ? "success" : "destructive"}>{account.tradeAllowed ? "Allowed" : "Blocked"}</Badge></td><td className="px-3 py-3"><Status value={account.syncStatus} /></td><td className="px-3 py-3">{time(account.lastSyncAt)}</td></tr>)}</tbody>
+            <tbody>{data.accounts.length ? data.accounts.map((account) => <tr className="border-b border-slate-100" key={account.id}><td className="px-3 py-3 font-semibold">{account.accountLogin}<p className="font-normal text-slate-500">{account.accountType}</p></td><td className="px-3 py-3">{account.brokerName}</td><td className="px-3 py-3">{account.currency}</td><td className="px-3 py-3">{money(account.balance, account.currency)}</td><td className="px-3 py-3">{money(account.equity, account.currency)}</td><td className="px-3 py-3">{money(account.margin, account.currency)}</td><td className="px-3 py-3">{money(account.freeMargin, account.currency)}</td><td className="px-3 py-3">{account.leverage}</td><td className="px-3 py-3"><Badge variant={account.tradeAllowed ? "success" : "destructive"}>{account.tradeAllowed ? "Allowed" : "Blocked"}</Badge></td><td className="px-3 py-3"><Status value={account.syncStatus} /></td><td className="px-3 py-3">{time(account.lastSyncAt)}</td></tr>) : <tr><td colSpan={11} className="px-3 py-8 text-center text-sm text-slate-500">No accounts synchronized yet.</td></tr>}</tbody>
           </table>
         </CardContent>
       </Card>
@@ -303,7 +310,7 @@ export function Mt5ControlCenterDashboard() {
         <CardContent className="overflow-x-auto">
           <table className="min-w-[1120px] w-full text-left text-xs">
             <thead className="border-y border-slate-100 bg-slate-50 text-slate-500"><tr>{["Symbol", "Broker Symbol", "Normalized", "Asset Class", "Spread", "Digits", "Contract Size", "Tick Value", "Trading", "Data Feed", "Mapping"].map((head) => <th className="px-3 py-3 font-semibold uppercase" key={head}>{head}</th>)}</tr></thead>
-            <tbody>{data.symbols.map((symbol) => <tr className="border-b border-slate-100" key={symbol.id}><td className="px-3 py-3 font-semibold">{symbol.symbol}</td><td className="px-3 py-3">{symbol.brokerSymbol}</td><td className="px-3 py-3 text-blue-700">{symbol.normalizedSymbol}</td><td className="px-3 py-3">{symbol.assetClass}</td><td className={cn("px-3 py-3", symbol.spread > symbol.normalSpread * 2.5 && "font-semibold text-red-700")}>{symbol.spread}</td><td className="px-3 py-3">{symbol.digits}</td><td className="px-3 py-3">{symbol.contractSize.toLocaleString()}</td><td className="px-3 py-3">{symbol.tickValue}</td><td className="px-3 py-3">{symbol.tradingAllowed ? "Allowed" : "Blocked"}</td><td className="px-3 py-3"><Badge variant={symbol.dataFeedActive ? "success" : "destructive"}>{symbol.dataFeedActive ? "Active" : "Down"}</Badge></td><td className="px-3 py-3"><Status value={symbol.mappingStatus} /></td></tr>)}</tbody>
+            <tbody>{data.symbols.length ? data.symbols.map((symbol) => <tr className="border-b border-slate-100" key={symbol.id}><td className="px-3 py-3 font-semibold">{symbol.symbol}</td><td className="px-3 py-3">{symbol.brokerSymbol}</td><td className="px-3 py-3 text-blue-700">{symbol.normalizedSymbol}</td><td className="px-3 py-3">{symbol.assetClass}</td><td className={cn("px-3 py-3", symbol.spread > symbol.normalSpread * 2.5 && "font-semibold text-red-700")}>{symbol.spread}</td><td className="px-3 py-3">{symbol.digits}</td><td className="px-3 py-3">{symbol.contractSize.toLocaleString()}</td><td className="px-3 py-3">{symbol.tickValue}</td><td className="px-3 py-3">{symbol.tradingAllowed ? "Allowed" : "Blocked"}</td><td className="px-3 py-3"><Badge variant={symbol.dataFeedActive ? "success" : "destructive"}>{symbol.dataFeedActive ? "Active" : "Down"}</Badge></td><td className="px-3 py-3"><Status value={symbol.mappingStatus} /></td></tr>) : <tr><td colSpan={11} className="px-3 py-8 text-center text-sm text-slate-500">No symbol mappings configured yet.</td></tr>}</tbody>
           </table>
         </CardContent>
       </Card>
@@ -312,7 +319,7 @@ export function Mt5ControlCenterDashboard() {
         <Card>
           <SectionTitle title="AI Diagnostics & Recommendations" description="Root cause reasoning with governed auto-remediation paths." icon={Bot} />
           <CardContent className="space-y-3">
-            {data.diagnostics.map((item) => (
+            {data.diagnostics.length ? data.diagnostics.map((item) => (
               <div key={item.id} className="rounded-xl border border-purple-100 bg-purple-50/40 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold text-slate-950">{item.issue}</p><Badge variant={item.severity === "Critical" ? "destructive" : "warning"}>{item.severity} {item.severityScore}</Badge></div>
                 <p className="mt-2 text-xs text-slate-600"><strong>Root cause:</strong> {item.rootCauseAnalysis}</p>
@@ -321,18 +328,18 @@ export function Mt5ControlCenterDashboard() {
                 <div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><Badge variant="purple">Confidence {Math.round(item.confidenceScore * 100)}%</Badge><Badge variant={item.autoRemediationAvailable ? "default" : "secondary"}>{item.autoRemediationStatus}</Badge>{item.escalationRequired ? <Badge variant="destructive">Escalation required</Badge> : null}</div>
                 {item.autoRemediationAvailable ? <Button size="sm" className="mt-3" disabled={!data.permissions.canRestart || query.action.isPending} onClick={() => invoke("Auto-remediation", "/api/mt5/diagnostics/auto-remediate", { diagnosticId: item.id })}>Trigger recovery workflow</Button> : null}
               </div>
-            ))}
+            )) : <p className="rounded-xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">No diagnostics recorded yet.</p>}
           </CardContent>
         </Card>
         <Card>
           <SectionTitle title="Incident & Recovery Timeline" description="Failure conditions and autonomous recovery activity." icon={ShieldCheck} />
           <CardContent className="space-y-1">
-            {data.incidents.map((incident) => (
+            {data.incidents.length ? data.incidents.map((incident) => (
               <div key={incident.id} className="flex gap-3 border-l-2 border-slate-100 py-3 pl-4">
                 <span className={cn("mt-1 h-2.5 w-2.5 shrink-0 rounded-full", incident.severity === "Critical" ? "bg-red-600" : incident.severity === "Warning" ? "bg-amber-500" : "bg-emerald-600")} />
                 <div><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold">{incident.eventType}</p><Badge variant={incident.autoResolved ? "success" : incident.severity === "Critical" ? "destructive" : "warning"}>{incident.autoResolved ? "Recovered" : incident.severity}</Badge></div><p className="mt-1 text-xs text-slate-600">{incident.message}</p><p className="mt-1 text-[11px] text-slate-500">{time(incident.createdAt)} | {incident.rootCause}</p></div>
               </div>
-            ))}
+            )) : <p className="rounded-xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">No incidents recorded yet.</p>}
           </CardContent>
         </Card>
       </section>

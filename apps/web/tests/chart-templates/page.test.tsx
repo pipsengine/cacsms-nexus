@@ -1,11 +1,22 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildChartTemplatesResponse } from "@/app/api/mt5/chart-templates/_lib/store";
 import { ChartTemplatesDashboard } from "@/modules/mt5-infrastructure-and-broker-connectivity/chart-templates/components/chart-templates-dashboard";
 
-vi.mock("@/modules/mt5-infrastructure-and-broker-connectivity/chart-templates/hooks/use-chart-templates", () => ({
-  useChartTemplates: () => ({ data: buildChartTemplatesResponse("Read-Only Viewer"), isLoading: false, isError: false, streamConnected: true, refetch: vi.fn(), action: { mutateAsync: vi.fn(), isPending: false } })
-}));
+vi.mock("@/modules/mt5-infrastructure-and-broker-connectivity/chart-templates/hooks/use-chart-templates", async () => {
+  const { buildChartTemplatesResponse } = await import("@/app/api/mt5/chart-templates/_lib/store");
+  const { seedChartTemplatesStore } = await import("@/tests/helpers/seed-api-stores");
+  seedChartTemplatesStore();
+  return {
+    useChartTemplates: () => ({
+      data: buildChartTemplatesResponse("Read-Only Viewer"),
+      isLoading: false,
+      isError: false,
+      streamConnected: true,
+      refetch: vi.fn(),
+      action: { mutateAsync: vi.fn(), isPending: false }
+    })
+  };
+});
 afterEach(cleanup);
 
 describe("Chart Templates dashboard", () => {

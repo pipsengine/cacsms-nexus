@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { seedErrorLogsStore } from "@/tests/helpers/seed-api-stores";
 
 import {
   autoRemediate,
@@ -11,7 +12,7 @@ import {
 } from "@/app/api/mt5/error-logs/_lib/store";
 
 describe("MT5 Error Logs API domain and security", () => {
-  beforeEach(() => resetErrorLogsState());
+  beforeEach(() => seedErrorLogsStore());
 
   it("defaults to read-only role when no header provided", () => {
     expect(errorLogsRole(new Request("http://localhost/api/mt5/error-logs/summary"))).toBe("Read-Only Viewer");

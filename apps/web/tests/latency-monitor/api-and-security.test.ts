@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { seedLatencyMonitorStore } from "@/tests/helpers/seed-api-stores";
 
 import {
   disableRoute,
@@ -11,7 +12,7 @@ import {
 } from "@/app/api/mt5/latency-monitor/_lib/store";
 
 describe("Latency Monitor API domain and security", () => {
-  beforeEach(() => resetLatencyMonitorState());
+  beforeEach(() => seedLatencyMonitorStore());
 
   it("defaults to read-only role when no header provided", () => {
     expect(latencyMonitorRole(new Request("http://localhost/api/mt5/latency-monitor/summary"))).toBe("Read-Only Viewer");

@@ -33,9 +33,6 @@ export function useSpreadMonitor() {
   const alertFilter = useSpreadMonitorStore((s) => s.alertFilter);
 
   useEffect(() => {
-    const isMock = typeof window !== "undefined" && window.location.search.includes("mock=1");
-    if (isMock) return;
-
     const source = new EventSource("/api/mt5/spread-monitor/events-stream");
     source.addEventListener("spread-monitor-snapshot", (event) => {
       const payload = JSON.parse((event as MessageEvent).data) as { summary: unknown; spreads: unknown; thresholds: unknown; alerts: unknown };

@@ -1,8 +1,10 @@
-import { describe, expect, it } from "vitest";
+import {describe, expect, it, beforeEach } from "vitest";
+import { seedTradeSyncStore } from "@/tests/helpers/seed-api-stores";
 
 import { buildAiDiagnostics, buildReconciliation, buildSummary, buildTrades } from "@/app/api/mt5/trade-synchronization/build";
 
 describe("trade synchronization API response shape", () => {
+  beforeEach(() => seedTradeSyncStore());
   it("buildSummary returns KPIs and workflow with bounded health score", () => {
     const summary = buildSummary();
 

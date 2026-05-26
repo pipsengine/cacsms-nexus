@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calculateAccountSyncHealth, calculateExposureRisk, classifyReconciliation, detectSyncDelay, validateTradingReadiness } from "@/modules/mt5-infrastructure-and-broker-connectivity/account-sync/algorithms/account-sync.algorithms";
-import { createAccountSyncSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/account-sync/data/account-sync.mock";
+import { createAccountSyncSeed } from "@/tests/fixtures/account-sync.fixture";
 
 describe("account synchronization algorithms", () => {
   const seed = createAccountSyncSeed();

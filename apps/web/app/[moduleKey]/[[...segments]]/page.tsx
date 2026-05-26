@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { ModulePlaceholderPage } from "@/components/pages/module-placeholder-page";
 import { WorkflowDashboard } from "@/components/workflow/workflow-dashboard";
 import { navigationGroups, navigationItems } from "@/config/navigation";
+import { modulePathAliases, resolveImplementedModulePage } from "@/config/module-routes";
 
 export function generateStaticParams() {
   return navigationItems.map((item) => {
@@ -32,6 +33,11 @@ export default async function ModulePage({
   }
 
   const path = `/${[moduleKey, ...(segments ?? [])].join("/")}`;
+
+  if (modulePathAliases[path]) {
+    redirect(modulePathAliases[path]);
+  }
+
   const item = navigationItems.find((i) => i.path === path);
 
   if (!item) {
@@ -40,6 +46,11 @@ export default async function ModulePage({
 
   if (item.path === "/executive-overview/autonomous-workflow") {
     return <WorkflowDashboard />;
+  }
+
+  const ImplementedPage = resolveImplementedModulePage(path);
+  if (ImplementedPage) {
+    return <ImplementedPage />;
   }
 
   return (

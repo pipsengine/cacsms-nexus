@@ -10,6 +10,16 @@ const state = bindPersistedMt5State("chart-control", () => ({
   audits: [] as AuditRecord[],
   lastRefreshAt: new Date().toISOString()
 }));
+
+export function resetChartControlState(override?: ReturnType<typeof createChartControlSeed>) {
+  const next = override ?? createChartControlSeed();
+  for (const key of Object.keys(next) as (keyof typeof next)[]) {
+    (state as Record<string, unknown>)[key as string] = next[key];
+  }
+  state.audits = [];
+  state.lastRefreshAt = new Date().toISOString();
+}
+
 const permissions: Record<string, Mt5Role[]> = {
   refresh: ["Super Admin", "Infrastructure Admin", "Trading Admin"],
   configure: ["Super Admin", "Infrastructure Admin", "Trading Admin", "Risk Manager", "Analyst"],

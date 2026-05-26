@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach } from "vitest";
 
 import { accounts } from "@/app/api/mt5/account-sync/_lib/store";
 import { bridgeSessions, ingestSignedBridgeEvent, publicBridgeInstance, signBridgeEnvelope } from "@/app/api/mt5/ea-bridge/_lib/store";
@@ -7,6 +7,7 @@ import { getTerminal } from "@/app/api/mt5/_lib/store";
 import { terminalRecord } from "@/app/api/mt5/terminal-status/_lib/store";
 import type { SignedBridgeEnvelope } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-bridge/types/ea-bridge.types";
 import type { TerminalOnboardingInput, TerminalOnboardingReceipt } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/types/mt5-control-center.types";
+import { seedAccountSyncStore, seedEaBridgeStore, seedEaTerminalHubStore, seedMt5ControlCenterStore, seedTerminalStatusStore } from "@/tests/helpers/seed-api-stores";
 
 function onboardingInput(suffix: string): TerminalOnboardingInput {
   return {
@@ -28,6 +29,14 @@ function onboardingInput(suffix: string): TerminalOnboardingInput {
 }
 
 describe("terminal onboarding workflow", () => {
+  beforeEach(() => {
+    seedMt5ControlCenterStore();
+    seedAccountSyncStore();
+    seedEaBridgeStore();
+    seedTerminalStatusStore();
+    seedEaTerminalHubStore();
+  });
+
   it("rejects anonymous terminal provisioning before disclosing registration state", async () => {
     const suffix = String(Date.now());
     const response = await onboardTerminal(new Request("http://localhost/api/mt5/onboarding/terminals", {

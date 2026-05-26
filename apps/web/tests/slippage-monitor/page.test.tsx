@@ -4,19 +4,36 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { SlippageMonitorDashboard } from "@/modules/mt5-infrastructure-and-broker-connectivity/slippage-monitor/components/slippage-monitor-dashboard";
 import { useSlippageMonitorStore } from "@/modules/mt5-infrastructure-and-broker-connectivity/slippage-monitor/stores/slippage-monitor.store";
+import { createSlippageMonitorSeed } from "@/tests/fixtures/slippage-monitor.fixture";
+import { installFetchMock, setupDashboardTestEnv, teardownDashboardTestEnv } from "../helpers/dashboard-test-env";
 
-afterEach(cleanup);
+const timestamp = new Date().toISOString();
+const execution = createSlippageMonitorSeed().executions[0]!;
+
+afterEach(() => {
+  cleanup();
+  teardownDashboardTestEnv();
+});
 
 beforeEach(() => {
-  if (!(globalThis as any).ResizeObserver) {
-    (globalThis as any).ResizeObserver = class ResizeObserver {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    };
-  }
+  setupDashboardTestEnv();
   useSlippageMonitorStore.setState({ role: "Read-Only Viewer" });
-  window.history.pushState({}, "", "/mt5-infrastructure-and-broker-connectivity/slippage-monitor?mock=1");
+  installFetchMock({
+    "/slippage-monitor/summary": () => ({
+      meta: { timestamp, currentRole: "Read-Only Viewer", streamEndpoint: "/api/mt5/slippage-monitor/events-stream" },
+      kpis: [],
+      slippageRiskScore: { score: 0, rating: "Excellent", factors: {} },
+      executionQualityScore: { score: 0, rating: "Excellent", factors: {} }
+    }),
+    "/slippage-monitor/workflow": () => ({ meta: { timestamp }, workflow: [] }),
+    "/slippage-monitor/executions": () => ({ meta: { timestamp, total: 1, page: 1, pageSize: 75 }, executions: [execution] }),
+    "/slippage-monitor/broker-comparison": () => ({ meta: { timestamp }, rows: [] }),
+    "/slippage-monitor/trends": () => ({ meta: { timestamp }, points: [] }),
+    "/slippage-monitor/thresholds": () => ({ meta: { timestamp, total: 0 }, thresholds: [] }),
+    "/slippage-monitor/alerts": () => ({ meta: { timestamp, total: 0 }, alerts: [] }),
+    "/slippage-monitor/logs": () => ({ meta: { timestamp, total: 0 }, logs: [] }),
+    "/slippage-monitor/ai-diagnostics": () => ({ meta: { timestamp, total: 0 }, diagnostics: [] })
+  });
 });
 
 describe("Slippage Monitor dashboard", () => {
@@ -35,7 +52,7 @@ describe("Slippage Monitor dashboard", () => {
     expect(screen.getByRole("button", { name: "Run Slippage Diagnostics" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Disable Unsafe Execution" })).toBeDisabled();
 
-    expect(await screen.findByRole("button", { name: "execution-001" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: execution.executionId })).toBeInTheDocument();
   }, 15000);
 
   it("searches the slippage table", async () => {
@@ -46,10 +63,10 @@ describe("Slippage Monitor dashboard", () => {
       </QueryClientProvider>
     );
 
-    await screen.findByRole("button", { name: "execution-001" });
-    fireEvent.change(screen.getByLabelText("Search executions"), { target: { value: "IC Markets" } });
+    await screen.findByRole("button", { name: execution.executionId });
+    fireEvent.change(screen.getByLabelText("Search executions"), { target: { value: execution.broker } });
 
     const table = within(screen.getByRole("table", { name: "Slippage executions" }));
-    expect((await table.findAllByText("IC Markets")).length).toBeGreaterThan(0);
+    expect((await table.findAllByText(execution.broker)).length).toBeGreaterThan(0);
   }, 15000);
 });

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { seedSlippageMonitorStore } from "@/tests/helpers/seed-api-stores";
 
 import {
   disableUnsafeExecution,
@@ -9,7 +10,7 @@ import {
 } from "@/app/api/mt5/slippage-monitor/_lib/store";
 
 describe("Slippage Monitor API domain and security", () => {
-  beforeEach(() => resetSlippageMonitorState());
+  beforeEach(() => seedSlippageMonitorStore());
 
   it("defaults to read-only role when no header provided", () => {
     expect(slippageMonitorRole(new Request("http://localhost/api/mt5/slippage-monitor/summary"))).toBe("Read-Only Viewer");

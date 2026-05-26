@@ -10,6 +10,16 @@ const state = bindPersistedMt5State("market-watch", () => ({
   audits: [] as AuditRecord[],
   lastRefreshAt: new Date().toISOString()
 }));
+
+export function resetMarketWatchState(override?: ReturnType<typeof createMarketWatchSeed>) {
+  const next = override ?? createMarketWatchSeed();
+  for (const key of Object.keys(next) as (keyof typeof next)[]) {
+    (state as Record<string, unknown>)[key as string] = next[key];
+  }
+  state.audits = [];
+  state.lastRefreshAt = new Date().toISOString();
+}
+
 const permissions: Record<string, Mt5Role[]> = {
   refresh: ["Super Admin", "Infrastructure Admin", "Trading Admin"],
   manageWatchlist: ["Super Admin", "Infrastructure Admin", "Trading Admin", "Risk Manager", "Analyst"],

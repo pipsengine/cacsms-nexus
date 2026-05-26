@@ -1,9 +1,20 @@
 import "server-only";
 
-import { Pool, type PoolClient, type QueryResultRow } from "pg";
+type PgPool = import("pg").Pool;
+type PgPoolClient = import("pg").PoolClient;
+type QueryResultRow = import("pg").QueryResultRow;
 
 declare global {
-  var __cacsmsPgPool: Pool | undefined;
+  var __cacsmsPgPool: PgPool | undefined;
+}
+
+let pgModulePromise: Promise<typeof import("pg")> | null = null;
+
+function loadPgModule() {
+  if (!pgModulePromise) {
+    pgModulePromise = import("pg");
+  }
+  return pgModulePromise;
 }
 
 function getDatabaseUrl() {
@@ -14,7 +25,8 @@ function getDatabaseUrl() {
   return url;
 }
 
-function createPool() {
+async function createPool() {
+  const { Pool } = await loadPgModule();
   return new Pool({
     connectionString: getDatabaseUrl(),
     ssl: process.env.POSTGRES_SSL === "true" ? { rejectUnauthorized: false } : undefined,
@@ -23,12 +35,12 @@ function createPool() {
   });
 }
 
-function getPostgresPool() {
+async function getPostgresPool() {
   if (globalThis.__cacsmsPgPool) {
     return globalThis.__cacsmsPgPool;
   }
 
-  const pool = createPool();
+  const pool = await createPool();
   if (process.env.NODE_ENV !== "production") {
     globalThis.__cacsmsPgPool = pool;
   }
@@ -36,14 +48,18 @@ function getPostgresPool() {
 }
 
 export async function query<T extends QueryResultRow>(text: string, values?: unknown[]) {
-  return getPostgresPool().query<T>(text, values);
+  return getPostgresPool().then((pool) => pool.query<T>(text, values));
 }
 
-export async function withClient<T>(handler: (client: PoolClient) => Promise<T>) {
-  const client = await getPostgresPool().connect();
+export async function withClient<T>(handler: (client: PgPoolClient) => Promise<T>) {
+  const client = await getPostgresPool().then((pool) => pool.connect());
   try {
     return await handler(client);
   } finally {
     client.release();
   }
+}
+
+export function isPostgresConfigured() {
+  return Boolean(process.env.DATABASE_URL);
 }

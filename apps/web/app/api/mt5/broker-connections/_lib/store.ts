@@ -25,6 +25,17 @@ const state = bindPersistedMt5State("broker-connections", () => ({
   lastSyncAt: new Date().toISOString(),
   restorationApprovals: new Set<string>()
 }));
+
+export function resetBrokerConnectionsState(override?: ReturnType<typeof createBrokerConnectionsSeed>) {
+  const next = override ?? createBrokerConnectionsSeed();
+  for (const key of Object.keys(next) as (keyof typeof next)[]) {
+    (state as Record<string, unknown>)[key as string] = next[key];
+  }
+  state.audits = [];
+  state.lastSyncAt = new Date().toISOString();
+  state.restorationApprovals = new Set<string>();
+}
+
 export function brokerRole(request?: Request): Mt5Role {
   return resolveMt5Role(request);
 }
@@ -219,9 +230,9 @@ export function buildBrokerConnectionsResponse(role: Mt5Role = "Infrastructure A
   const brokers = brokerConnections();
   const now = new Date().toISOString();
   const rankings = rankBrokerReliability(brokers);
-  const averageLatency = Math.round(brokers.reduce((sum, broker) => sum + broker.averageLatencyMs, 0) / brokers.length);
-  const averageSpread = Math.round(brokers.reduce((sum, broker) => sum + broker.spreadStabilityScore, 0) / brokers.length);
-  const rejectionRate = (brokers.reduce((sum, broker) => sum + broker.rejectionRate, 0) / brokers.length).toFixed(1);
+  const averageLatency = brokers.length ? Math.round(brokers.reduce((sum, broker) => sum + broker.averageLatencyMs, 0) / brokers.length) : 0;
+  const averageSpread = brokers.length ? Math.round(brokers.reduce((sum, broker) => sum + broker.spreadStabilityScore, 0) / brokers.length) : 0;
+  const rejectionRate = brokers.length ? (brokers.reduce((sum, broker) => sum + broker.rejectionRate, 0) / brokers.length).toFixed(1) : "0.0";
   const titles = ["Broker Registered", "Server Reachable", "Account Login Validated", "Symbols Available", "Market Data Active", "Trading Permission Verified", "Execution Gateway Ready", "Feedback Received", "Audit Logged"];
   return {
     meta: { timestamp: now, currentRole: role, streamEndpoint: "/api/mt5/broker-connections/events-stream", monitoringMode: "Autonomous Broker Monitoring" },
@@ -231,7 +242,7 @@ export function buildBrokerConnectionsResponse(role: Mt5Role = "Infrastructure A
       { label: "Disconnected Brokers", value: String(brokers.filter((broker) => broker.connectionStatus === "Offline").length), status: "Critical", detail: "Unreachable endpoints", updatedAt: now },
       { label: "Degraded Brokers", value: String(brokers.filter((broker) => broker.connectionStatus === "Degraded").length), status: "Degraded", detail: "Require monitoring", updatedAt: now },
       { label: "Execution-Ready Brokers", value: String(brokers.filter((broker) => broker.executionEnabled && broker.executionStatus === "Healthy").length), status: "Healthy", detail: "Approved routing", updatedAt: now },
-      { label: "Data Feed Active", value: `${brokers.filter((broker) => broker.dataFeedActive).length}/${brokers.length}`, status: "Degraded", detail: "Receiving live quotes", updatedAt: now },
+      { label: "Data Feed Active", value: brokers.length ? `${brokers.filter((broker) => broker.dataFeedActive).length}/${brokers.length}` : "0/0", status: brokers.length ? "Degraded" : "Inactive", detail: brokers.length ? "Receiving live quotes" : "No brokers linked", updatedAt: now },
       { label: "Average Broker Latency", value: `${averageLatency} ms`, status: averageLatency > 150 ? "Degraded" : "Healthy", detail: "Server round trip", updatedAt: now },
       { label: "Average Spread Stability", value: `${averageSpread}%`, status: averageSpread > 75 ? "Healthy" : "Degraded", detail: "Normalized spread quality", updatedAt: now },
       { label: "Failed Login Attempts", value: String(brokers.reduce((sum, broker) => sum + broker.failedLoginCount, 0)), status: "Critical", detail: "Current observation period", updatedAt: now },
@@ -246,7 +257,7 @@ export function buildBrokerConnectionsResponse(role: Mt5Role = "Infrastructure A
       failureCount: index < 2 ? brokers.filter((broker) => !broker.serverReachable).length : brokers.filter((broker) => broker.riskLevel === "Critical").length,
       averageDelayMs: averageLatency,
       lastCheckedAt: now,
-      aiRecommendation: index === 6 ? "Remove FTMO from routing until gateway validation passes." : undefined
+      aiRecommendation: index === 6 && brokers.some((broker) => broker.riskLevel === "Critical") ? "Disable execution on critical brokers until gateway validation passes." : undefined
     })),
     brokers,
     connectionTests: state.tests,

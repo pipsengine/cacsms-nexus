@@ -8,7 +8,7 @@ import {
   evaluateSafeRestart,
   predictTerminalFailure
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/terminal-status/algorithms/terminal-status.algorithms";
-import { createTerminalStatusSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/terminal-status/data/terminal-status.mock";
+import { createTerminalStatusSeed } from "@/tests/fixtures/terminal-status.fixture";
 
 describe("terminal status monitoring algorithms", () => {
   it("classifies heartbeat thresholds exactly", () => {

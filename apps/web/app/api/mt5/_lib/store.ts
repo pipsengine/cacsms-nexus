@@ -25,6 +25,14 @@ const state = bindPersistedMt5State("mt5-control-center", () => ({
   audit: [] as AuditRecord[]
 }));
 
+export function resetMt5ControlCenterState(override?: ReturnType<typeof createMt5Seed>) {
+  const next = override ?? createMt5Seed();
+  for (const key of Object.keys(next) as (keyof typeof next)[]) {
+    (state as Record<string, unknown>)[key as string] = next[key];
+  }
+  state.audit = [];
+}
+
 export function getRole(request?: Request): Mt5Role {
   return resolveMt5Role(request);
 }
@@ -302,15 +310,24 @@ export function autoRemediate(diagnosticId: string, role: Mt5Role, request?: Req
 
 export function buildControlCenter(role: Mt5Role = "Infrastructure Admin"): Mt5ControlCenterResponse {
   const critical = state.incidents.filter((incident) => incident.severity === "Critical" && !incident.autoResolved).length;
-  const heartbeat = Math.max(...state.terminals.map((terminal) => (Date.now() - new Date(terminal.lastHeartbeatAt).getTime()) / 1000));
+  const heartbeat = state.terminals.length
+    ? Math.max(...state.terminals.map((terminal) => (Date.now() - new Date(terminal.lastHeartbeatAt).getTime()) / 1000))
+    : 0;
   const execution = calculateExecutionQuality(state.executionSamples);
   const gaps = detectMarketDataGaps(state.symbols);
+  const brokerCount = state.brokers.length;
+  const averageBrokerUptime = brokerCount ? state.brokers.reduce((sum, broker) => sum + broker.uptimePercent, 0) / brokerCount : 100;
+  const averageBrokerLatency = brokerCount ? state.brokers.reduce((sum, broker) => sum + broker.averageLatencyMs, 0) / brokerCount : 0;
+  const averageDataFeedQuality = brokerCount ? state.brokers.reduce((sum, broker) => sum + broker.dataFeedQualityScore, 0) / brokerCount : 100;
+  const loginSuccessPercent = brokerCount
+    ? 100 - (state.brokers.filter((broker) => broker.loginHealth === "Critical").length / brokerCount) * 100
+    : 100;
   const connectionHealth = calculateConnectionHealthScore({
-    uptimePercent: state.brokers.reduce((sum, broker) => sum + broker.uptimePercent, 0) / state.brokers.length,
+    uptimePercent: averageBrokerUptime,
     heartbeatAgeSeconds: heartbeat,
-    latencyMs: state.brokers.reduce((sum, broker) => sum + broker.averageLatencyMs, 0) / state.brokers.length,
-    dataFeedQuality: state.brokers.reduce((sum, broker) => sum + broker.dataFeedQualityScore, 0) / state.brokers.length,
-    loginSuccessPercent: 100 - (state.brokers.filter((broker) => broker.loginHealth === "Critical").length / state.brokers.length) * 100,
+    latencyMs: averageBrokerLatency,
+    dataFeedQuality: averageDataFeedQuality,
+    loginSuccessPercent,
     executionSuccessPercent: 100 - execution.rejectionRate,
     criticalIncidents: critical
   });
@@ -319,19 +336,26 @@ export function buildControlCenter(role: Mt5Role = "Infrastructure Admin"): Mt5C
     const metric = calculateExecutionQuality(samples);
     return { brokerId: broker.id, brokerName: broker.brokerName, latencyMs: broker.averageLatencyMs, executionMs: metric.averageExecutionMs, slippage: metric.averageSlippagePoints, rejected: metric.rejectionRate };
   });
+  const activeTerminals = state.terminals.filter((terminal) => terminal.status !== "Offline").length;
+  const healthyBrokers = state.brokers.filter((broker) => broker.status !== "Critical").length;
+  const tradeAllowedAccounts = state.accounts.filter((account) => account.tradeAllowed).length;
+  const lastSuccessfulSync = state.accounts.length
+    ? new Date(Math.max(...state.accounts.map((account) => new Date(account.lastSyncAt).getTime()))).toLocaleTimeString()
+    : "—";
+
   return {
     meta: { timestamp: new Date().toISOString(), streamEndpoint: "/api/mt5/events", currentRole: role, monitoringMode: "Autonomous" },
     kpis: [
-      { label: "Active MT5 Terminals", value: `${state.terminals.filter((terminal) => terminal.status !== "Offline").length}/${state.terminals.length}`, status: state.terminals.some((terminal) => terminal.status === "Critical") ? "Warning" : "Healthy", detail: "Heartbeat monitored" },
-      { label: "Connected Brokers", value: `${state.brokers.filter((broker) => broker.status !== "Critical").length}/${state.brokers.length}`, status: "Warning", detail: "One login failure" },
-      { label: "Live Trading Accounts", value: String(state.accounts.filter((account) => account.tradeAllowed).length), status: "Healthy", detail: "Permission enforced" },
-      { label: "Market Data Status", value: gaps.missingTicks.length ? "Degraded" : "Live", status: gaps.missingTicks.length ? "Warning" : "Healthy", detail: `${gaps.delayedTicks.length} delayed feed(s)` },
-      { label: "Execution Gateway", value: execution.fillQualityScore > 70 ? "Active" : "At Risk", status: execution.fillQualityScore > 70 ? "Healthy" : "Warning", detail: `${execution.fillQualityScore}/100 quality` },
-      { label: "Average Latency", value: `${Math.round(state.brokers.reduce((sum, broker) => sum + broker.averageLatencyMs, 0) / state.brokers.length)} ms`, status: "Warning", detail: "FTMO path elevated" },
-      { label: "Failed Login Sessions", value: "1", status: "Critical", detail: "FTMO authentication" },
-      { label: "Trade Rejection Rate", value: `${execution.rejectionRate}%`, status: execution.rejectionRate > 10 ? "Critical" : "Healthy", detail: "Rolling executions" },
-      { label: "Last Successful Sync", value: new Date(Math.max(...state.accounts.map((account) => new Date(account.lastSyncAt).getTime()))).toLocaleTimeString(), status: "Healthy", detail: "Account snapshots" },
-      { label: "Infrastructure Risk", value: connectionHealth.rating, status: connectionHealth.score >= 75 ? "Healthy" : connectionHealth.score >= 60 ? "Warning" : "Critical", detail: `${connectionHealth.score}/100` }
+      { label: "Active MT5 Terminals", value: `${activeTerminals}/${state.terminals.length}`, status: state.terminals.length === 0 ? "Inactive" : state.terminals.some((terminal) => terminal.status === "Critical") ? "Warning" : "Healthy", detail: state.terminals.length ? "Heartbeat monitored" : "No terminals registered" },
+      { label: "Connected Brokers", value: `${healthyBrokers}/${state.brokers.length}`, status: state.brokers.length === 0 ? "Inactive" : healthyBrokers === state.brokers.length ? "Healthy" : "Warning", detail: state.brokers.length ? "Broker sessions tracked" : "No brokers registered" },
+      { label: "Live Trading Accounts", value: String(tradeAllowedAccounts), status: state.accounts.length ? "Healthy" : "Inactive", detail: state.accounts.length ? "Permission enforced" : "No accounts bound" },
+      { label: "Market Data Status", value: state.symbols.length === 0 ? "Unconfigured" : gaps.missingTicks.length ? "Degraded" : "Live", status: state.symbols.length === 0 ? "Inactive" : gaps.missingTicks.length ? "Warning" : "Healthy", detail: state.symbols.length ? `${gaps.delayedTicks.length} delayed feed(s)` : "No symbols synced" },
+      { label: "Execution Gateway", value: state.executionSamples.length === 0 ? "Idle" : execution.fillQualityScore > 70 ? "Active" : "At Risk", status: state.executionSamples.length === 0 ? "Inactive" : execution.fillQualityScore > 70 ? "Healthy" : "Warning", detail: state.executionSamples.length ? `${execution.fillQualityScore}/100 quality` : "No execution samples" },
+      { label: "Average Latency", value: brokerCount ? `${Math.round(averageBrokerLatency)} ms` : "—", status: brokerCount ? (averageBrokerLatency > 250 ? "Warning" : "Healthy") : "Inactive", detail: brokerCount ? "Across registered brokers" : "No broker telemetry" },
+      { label: "Failed Login Sessions", value: String(state.brokers.filter((broker) => broker.loginHealth === "Critical").length), status: state.brokers.some((broker) => broker.loginHealth === "Critical") ? "Critical" : "Healthy", detail: state.brokers.length ? "Authentication health" : "No broker sessions" },
+      { label: "Trade Rejection Rate", value: `${execution.rejectionRate}%`, status: execution.rejectionRate > 10 ? "Critical" : state.executionSamples.length ? "Healthy" : "Inactive", detail: state.executionSamples.length ? "Rolling executions" : "No executions recorded" },
+      { label: "Last Successful Sync", value: lastSuccessfulSync, status: state.accounts.length ? "Healthy" : "Inactive", detail: state.accounts.length ? "Account snapshots" : "No account sync yet" },
+      { label: "Infrastructure Risk", value: connectionHealth.rating, status: connectionHealth.score >= 75 ? "Healthy" : connectionHealth.score >= 60 ? "Warning" : state.terminals.length || state.brokers.length ? "Critical" : "Inactive", detail: `${connectionHealth.score}/100` }
     ],
     connectionHealth,
     workflow: state.workflow,

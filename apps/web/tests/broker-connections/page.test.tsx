@@ -1,7 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildBrokerConnectionsResponse } from "@/app/api/mt5/broker-connections/_lib/store";
 import { BrokerConnectionsDashboard } from "@/modules/mt5-infrastructure-and-broker-connectivity/broker-connections/components/broker-connections-dashboard";
 
 vi.mock("recharts", () => ({
@@ -15,16 +14,21 @@ vi.mock("recharts", () => ({
   Tooltip: () => null
 }));
 
-vi.mock("@/modules/mt5-infrastructure-and-broker-connectivity/broker-connections/hooks/use-broker-connections", () => ({
-  useBrokerConnections: () => ({
-    data: buildBrokerConnectionsResponse("Read-Only Viewer"),
-    isLoading: false,
-    isError: false,
-    streamConnected: true,
-    refetch: vi.fn(),
-    action: { mutateAsync: vi.fn(), isPending: false }
-  })
-}));
+vi.mock("@/modules/mt5-infrastructure-and-broker-connectivity/broker-connections/hooks/use-broker-connections", async () => {
+  const { buildBrokerConnectionsResponse } = await import("@/app/api/mt5/broker-connections/_lib/store");
+  const { seedBrokerConnectionsStore } = await import("@/tests/helpers/seed-api-stores");
+  seedBrokerConnectionsStore();
+  return {
+    useBrokerConnections: () => ({
+      data: buildBrokerConnectionsResponse("Read-Only Viewer"),
+      isLoading: false,
+      isError: false,
+      streamConnected: true,
+      refetch: vi.fn(),
+      action: { mutateAsync: vi.fn(), isPending: false }
+    })
+  };
+});
 
 afterEach(cleanup);
 

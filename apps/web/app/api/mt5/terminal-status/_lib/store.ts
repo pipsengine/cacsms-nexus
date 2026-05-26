@@ -26,6 +26,16 @@ const state = bindPersistedMt5State("terminal-status", () => ({
   audits: [] as AuditRecord[],
   lastSyncAt: new Date().toISOString()
 }));
+
+export function resetTerminalStatusState(override?: ReturnType<typeof createTerminalStatusSeed>) {
+  const next = override ?? createTerminalStatusSeed();
+  for (const key of Object.keys(next) as (keyof typeof next)[]) {
+    (state as Record<string, unknown>)[key as string] = next[key];
+  }
+  state.audits = [];
+  state.lastSyncAt = new Date().toISOString();
+}
+
 export function terminalStatusRole(request?: Request): Mt5Role {
   return resolveMt5Role(request);
 }

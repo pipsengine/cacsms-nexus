@@ -34,9 +34,6 @@ export function useExecutionQueue() {
   const selectedQueueId = useExecutionQueueStore((s) => s.selectedQueueId);
 
   useEffect(() => {
-    const isMock = typeof window !== "undefined" && window.location.search.includes("mock=1");
-    if (isMock) return;
-
     const source = new EventSource("/api/mt5/execution-queue/events-stream");
     source.addEventListener("queue-snapshot", (event) => {
       const payload = JSON.parse((event as MessageEvent).data) as { summary: unknown; items: unknown };

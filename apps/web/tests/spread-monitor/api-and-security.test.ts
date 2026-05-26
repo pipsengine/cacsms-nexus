@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { seedSpreadMonitorStore } from "@/tests/helpers/seed-api-stores";
 
 import {
   disableExecution,
@@ -10,7 +11,7 @@ import {
 } from "@/app/api/mt5/spread-monitor/_lib/store";
 
 describe("Spread Monitor API domain and security", () => {
-  beforeEach(() => resetSpreadMonitorState());
+  beforeEach(() => seedSpreadMonitorStore());
 
   it("defaults to read-only role when no header provided", () => {
     expect(spreadMonitorRole(new Request("http://localhost/api/mt5/spread-monitor/summary"))).toBe("Read-Only Viewer");

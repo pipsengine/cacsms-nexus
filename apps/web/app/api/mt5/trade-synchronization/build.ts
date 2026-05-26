@@ -11,8 +11,6 @@ import type {
   TradeSyncWorkflowStep
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/trade-synchronization/types/trade-synchronization.types";
 
-import { getMockDiagnostics, getMockLogs } from "@/modules/mt5-infrastructure-and-broker-connectivity/trade-synchronization/data/trade-synchronization.mock";
-
 import { calculateTradeSyncHealthScore } from "./algorithms/trade-sync-health-score.algorithm";
 import { detectMissingCloseEvents } from "./algorithms/missing-close-event-detection.algorithm";
 import { detectPartialFills } from "./algorithms/partial-fill-detection.algorithm";
@@ -149,7 +147,7 @@ export function buildTrades(params: { search?: string; status?: string; page?: n
 }
 
 export function buildLogs(filter?: string): TradeSyncLogsResponse {
-  const logs = [...listRuntimeLogs(), ...getMockLogs()];
+  const logs = listRuntimeLogs();
   const normalized = filter?.trim().toLowerCase() ?? "";
   const filtered = normalized
     ? logs.filter(
@@ -171,7 +169,6 @@ export function buildExceptions(filter?: string): TradeSyncLogsResponse {
 }
 
 export function buildAiDiagnostics(): AiDiagnosticsResponse {
-  const base = getMockDiagnostics();
   const trades = listTrades();
 
   const derived: AiTradeSyncDiagnostic[] = trades
@@ -195,7 +192,7 @@ export function buildAiDiagnostics(): AiDiagnosticsResponse {
 
   return {
     meta: { timestamp: nowIso() },
-    diagnostics: [...base.diagnostics, ...derived].slice(0, 25)
+    diagnostics: derived.slice(0, 25)
   };
 }
 

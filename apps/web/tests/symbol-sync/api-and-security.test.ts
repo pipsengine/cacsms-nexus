@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import {describe, expect, it, beforeEach } from "vitest";
+import { seedSymbolSyncStore } from "@/tests/helpers/seed-api-stores";
 import { audits, autoRemediateSymbol, buildSymbolSyncResponse, remapSymbol, runSymbolDiagnostics, symbolRole, syncAllSymbols } from "@/app/api/mt5/symbol-sync/_lib/store";
 
 describe("Symbol Sync operational controls", () => {
+  beforeEach(() => seedSymbolSyncStore());
   it("returns monitoring, feed, workflow, and AI sections", () => {
     const response = buildSymbolSyncResponse("Infrastructure Admin");
     expect(response.kpis).toHaveLength(12);

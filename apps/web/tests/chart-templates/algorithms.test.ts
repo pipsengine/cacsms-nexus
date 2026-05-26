@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calculateTemplateHealth, detectTemplateIssues, nextVersion, templateCompleteness } from "@/modules/mt5-infrastructure-and-broker-connectivity/chart-templates/algorithms/chart-templates.algorithms";
-import { createChartTemplatesSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/chart-templates/data/chart-templates.mock";
+import { createChartTemplatesSeed } from "@/tests/fixtures/chart-templates.fixture";
 
 describe("chart-template algorithms", () => {
   it("identifies stale, incomplete, and affected preset definitions", () => {

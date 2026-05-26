@@ -1,8 +1,6 @@
 import type { WorkflowStage, WorkflowStatus } from "@cacsms-nexus/types/workflow";
 import { create } from "zustand";
 
-import { mockWorkflowStages } from "@/services/mock-data-service";
-
 type WorkflowState = {
   stages: WorkflowStage[];
   selectedStage: WorkflowStage | null;
@@ -14,8 +12,8 @@ type WorkflowState = {
 };
 
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({
-  stages: mockWorkflowStages,
-  selectedStage: mockWorkflowStages[0],
+  stages: [],
+  selectedStage: null,
   simulatedStatus: "Running",
   lastUpdatedAt: "",
   touchLastUpdatedAt: () => set({ lastUpdatedAt: new Date().toISOString() }),

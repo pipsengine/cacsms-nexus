@@ -41,7 +41,8 @@ const legacyControlCenterSegments = new Set([
 ]);
 
 const relatedModules: Partial<Record<Mt5ModuleKey, Mt5ModuleKey[]>> = {
-  "ea-bridge": ["account-sync", "mt5-control-center", "terminal-status"]
+  "ea-bridge": ["account-sync", "mt5-control-center", "terminal-status"],
+  "ea-terminal-hub": ["terminal-status", "ea-bridge"]
 };
 
 export function isMt5ModuleKey(value: string): value is Mt5ModuleKey {

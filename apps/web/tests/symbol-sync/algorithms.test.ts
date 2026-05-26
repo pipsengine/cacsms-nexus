@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calculateSymbolHealth, classifyFeed, detectSymbolIssues, normalizeBrokerSymbol } from "@/modules/mt5-infrastructure-and-broker-connectivity/symbol-sync/algorithms/symbol-sync.algorithms";
-import { createSymbolSyncSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/symbol-sync/data/symbol-sync.mock";
+import { createSymbolSyncSeed } from "@/tests/fixtures/symbol-sync.fixture";
 
 describe("symbol synchronization algorithms", () => {
   it("normalizes broker-specific contract variants into registry symbols", () => {

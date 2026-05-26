@@ -14,6 +14,17 @@ const state = bindPersistedMt5State("order-router", () => ({
   lastSyncAt: new Date().toISOString()
 }));
 
+export function resetOrderRouterState(override?: ReturnType<typeof createOrderRouterSeed>) {
+  const next = override ?? createOrderRouterSeed();
+  for (const key of Object.keys(next) as (keyof typeof next)[]) {
+    (state as Record<string, unknown>)[key as string] = next[key];
+  }
+  state.audits = [];
+  state.routingPaused = false;
+  state.emergencyStopActive = false;
+  state.lastSyncAt = new Date().toISOString();
+}
+
 export function orderRouterRole(request?: Request): Mt5Role { return resolveMt5Role(request); }
 
 const permissions: Record<string, Mt5Role[]> = {

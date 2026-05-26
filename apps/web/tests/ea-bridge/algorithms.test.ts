@@ -7,7 +7,7 @@ import {
   isDuplicateCommand,
   validateBridgePayload
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-bridge/algorithms/ea-bridge.algorithms";
-import { createEaBridgeSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-bridge/data/ea-bridge.mock";
+import { createEaBridgeSeed } from "@/tests/fixtures/ea-bridge.fixture";
 
 describe("EA bridge security and reliability algorithms", () => {
   it("scores bridge delivery reliability and health under failures", () => {

@@ -57,8 +57,8 @@ const state = bindPersistedMt5State<ExecutionLogsState>("execution-logs", () => 
   lastSyncAt: new Date().toISOString()
 }));
 
-export function resetExecutionLogsState() {
-  const next = createExecutionLogsSeed();
+export function resetExecutionLogsState(override?: ReturnType<typeof createExecutionLogsSeed>) {
+  const next = override ?? createExecutionLogsSeed();
   state.logs = next.logs;
   state.brokerResponses = next.brokerResponses;
   state.retries = next.retries;

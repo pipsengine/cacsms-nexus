@@ -33,9 +33,6 @@ export function useSlippageMonitor() {
   const alertFilter = useSlippageMonitorStore((s) => s.alertFilter);
 
   useEffect(() => {
-    const isMock = typeof window !== "undefined" && window.location.search.includes("mock=1");
-    if (isMock) return;
-
     const source = new EventSource("/api/mt5/slippage-monitor/events-stream");
     source.addEventListener("slippage-monitor-snapshot", (event) => {
       const payload = JSON.parse((event as MessageEvent).data) as { summary: unknown; executions: unknown; thresholds: unknown; alerts: unknown };

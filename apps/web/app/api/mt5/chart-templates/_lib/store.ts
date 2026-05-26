@@ -9,6 +9,15 @@ const state = bindPersistedMt5State("chart-templates", () => ({
   ...createChartTemplatesSeed(),
   audits: [] as AuditRecord[]
 }));
+
+export function resetChartTemplatesState(override?: ReturnType<typeof createChartTemplatesSeed>) {
+  const next = override ?? createChartTemplatesSeed();
+  for (const key of Object.keys(next) as (keyof typeof next)[]) {
+    (state as Record<string, unknown>)[key as string] = next[key];
+  }
+  state.audits = [];
+}
+
 const permissions: Record<string, Mt5Role[]> = {
   create: ["Super Admin", "Infrastructure Admin", "Trading Admin", "Risk Manager", "Analyst"],
   clone: ["Super Admin", "Infrastructure Admin", "Trading Admin", "Risk Manager", "Analyst"],

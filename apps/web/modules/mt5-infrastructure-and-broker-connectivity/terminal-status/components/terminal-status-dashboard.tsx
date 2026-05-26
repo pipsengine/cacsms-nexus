@@ -43,8 +43,8 @@ function DetailItem({ label, value, state }: { label: string; value: string; sta
 
 export function TerminalStatusDashboard() {
   const query = useTerminalStatus();
-  const [selectedId, setSelectedId] = useState("term-fra-03");
-  const [expandedId, setExpandedId] = useState<string | null>("term-fra-03");
+  const [selectedId, setSelectedId] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [errorFilter, setErrorFilter] = useState("All");
@@ -56,7 +56,7 @@ export function TerminalStatusDashboard() {
   if (query.isLoading || !query.data) return <div className="mx-auto max-w-[1900px] px-4 py-6 text-sm text-slate-600">Loading live terminal telemetry...</div>;
 
   const data = query.data;
-  const selected = data.terminals.find((terminal) => terminal.terminalId === selectedId) ?? data.terminals[0];
+  const selected = data.terminals.find((terminal) => terminal.terminalId === selectedId) ?? data.terminals[0] ?? null;
   const filtered = data.terminals
     .filter((terminal) => `${terminal.terminalName} ${terminal.terminalId} ${terminal.brokerName} ${terminal.serverName} ${terminal.accountLogin} ${terminal.hostMachine}`.toLowerCase().includes(search.toLowerCase()))
     .filter((terminal) => statusFilter === "All" || terminal.riskLevel === statusFilter || terminal.heartbeatStatus === statusFilter)
@@ -65,13 +65,17 @@ export function TerminalStatusDashboard() {
   const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const shown = filtered.slice((Math.min(page, pages) - 1) * pageSize, Math.min(page, pages) * pageSize);
   const visibleErrors = data.errors.filter((error) => errorFilter === "All" || error.severity === errorFilter || error.sourceModule === errorFilter || (errorFilter === "Resolved" && error.resolved) || (errorFilter === "Unresolved" && !error.resolved));
-  const selectedHeartbeats = data.heartbeatLogs.filter((log) => log.terminalId === selected.terminalId);
-  const selectedEvents = data.events.filter((event) => event.terminalId === selected.terminalId).slice(0, 10);
-  const selectedDiagnostic = data.diagnostics.find((diagnostic) => diagnostic.terminalId === selected.terminalId);
-  const freeze = detectTerminalFreeze(selected);
-  const pressure = classifyResourcePressure(selected);
+  const selectedHeartbeats = selected ? data.heartbeatLogs.filter((log) => log.terminalId === selected.terminalId) : [];
+  const selectedEvents = selected ? data.events.filter((event) => event.terminalId === selected.terminalId).slice(0, 10) : [];
+  const selectedDiagnostic = selected ? data.diagnostics.find((diagnostic) => diagnostic.terminalId === selected.terminalId) : undefined;
+  const freeze = selected ? detectTerminalFreeze(selected) : { state: "No terminal selected" };
+  const pressure = selected ? classifyResourcePressure(selected) : { level: "None" };
 
   async function command(label: string, path: string, body?: Record<string, unknown>) {
+    if (!path) {
+      setNotice("No terminal is selected for this action yet.");
+      return;
+    }
     if (!window.confirm(`Confirm ${label.toLowerCase()} for terminal operations? This action will be audit-logged.`)) return;
     setNotice(null);
     try {
@@ -94,8 +98,8 @@ export function TerminalStatusDashboard() {
 
   const headerActions = [
     { label: "Sync Terminal Status", path: "/api/mt5/terminal-status/sync", allowed: data.permissions.canSync, icon: RefreshCw },
-    { label: "Run Health Check", path: `/api/mt5/terminal-status/${selected.terminalId}/health-check`, allowed: data.permissions.canRunHealthCheck, icon: Stethoscope },
-    { label: "Restart Selected", path: `/api/mt5/terminal-status/${selected.terminalId}/restart`, allowed: data.permissions.canRestart, icon: RotateCcw }
+    { label: "Run Health Check", path: selected ? `/api/mt5/terminal-status/${selected.terminalId}/health-check` : "", allowed: data.permissions.canRunHealthCheck && Boolean(selected), icon: Stethoscope },
+    { label: "Restart Selected", path: selected ? `/api/mt5/terminal-status/${selected.terminalId}/restart` : "", allowed: data.permissions.canRestart && Boolean(selected), icon: RotateCcw }
   ];
 
   return (
@@ -112,13 +116,13 @@ export function TerminalStatusDashboard() {
                 <Badge variant="purple">Autonomous monitoring</Badge>
               </div>
               <p className="mt-2 max-w-3xl text-sm text-slate-600">Real-time health, heartbeat, uptime, resource usage, and operational readiness of all MT5 terminals.</p>
-              <p className="mt-3 text-xs text-slate-500">Role: {data.permissions.role} | Last update: {time(data.meta.timestamp)} | Selected: {selected.terminalName}</p>
+              <p className="mt-3 text-xs text-slate-500">Role: {data.permissions.role} | Last update: {time(data.meta.timestamp)} | Selected: {selected?.terminalName ?? "None"}</p>
             </div>
             <div className="hidden flex-wrap items-start justify-end gap-2 sm:flex">
               <Button variant="outline" onClick={() => query.refetch()}><RefreshCw className="h-4 w-4" />Refresh Terminals</Button>
               {headerActions.map(({ label, path, allowed, icon: Icon }) => <Button key={label} variant="outline" disabled={!allowed || query.action.isPending} onClick={() => command(label, path)}><Icon className="h-4 w-4" />{label}</Button>)}
               <Button variant="outline" onClick={exportReport}><Download className="h-4 w-4" />Export Status Report</Button>
-              <Button variant="destructive" disabled={!data.permissions.canEmergencyDisable} onClick={() => command("Emergency disable terminal trading", `/api/mt5/terminal-status/${selected.terminalId}/disable-trading`)}><PowerOff className="h-4 w-4" />Emergency Disable Terminal Trading</Button>
+              <Button variant="destructive" disabled={!data.permissions.canEmergencyDisable || !selected} onClick={() => command("Emergency disable terminal trading", selected ? `/api/mt5/terminal-status/${selected.terminalId}/disable-trading` : "")}><PowerOff className="h-4 w-4" />Emergency Disable Terminal Trading</Button>
             </div>
             <div className="sm:hidden">
               <DropdownMenu>
@@ -127,7 +131,7 @@ export function TerminalStatusDashboard() {
                   <DropdownMenuItem onSelect={() => query.refetch()}>Refresh Terminals</DropdownMenuItem>
                   {headerActions.map((item) => <DropdownMenuItem key={item.label} disabled={!item.allowed} onSelect={() => command(item.label, item.path)}>{item.label}</DropdownMenuItem>)}
                   <DropdownMenuItem onSelect={exportReport}>Export Status Report</DropdownMenuItem>
-                  <DropdownMenuItem disabled={!data.permissions.canEmergencyDisable} className="text-red-700" onSelect={() => command("Emergency disable terminal trading", `/api/mt5/terminal-status/${selected.terminalId}/disable-trading`)}>Emergency Disable Trading</DropdownMenuItem>
+                  <DropdownMenuItem disabled={!data.permissions.canEmergencyDisable || !selected} className="text-red-700" onSelect={() => command("Emergency disable terminal trading", selected ? `/api/mt5/terminal-status/${selected.terminalId}/disable-trading` : "")}>Emergency Disable Trading</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -180,9 +184,9 @@ export function TerminalStatusDashboard() {
               <table aria-label="Terminal status inventory" className="w-full min-w-[2250px] text-left text-xs">
                 <thead className="border-y border-slate-100 bg-slate-50 text-slate-500"><tr>{["", "Terminal ID / Name", "Broker / Server", "Account", "Host / IP / OS", "Version / Build", "Risk", "Process", "Connection", "Heartbeat", "Last Heartbeat", "Delay", "CPU", "Memory", "Disk", "Uptime", "Trading", "Market Data", "Positions", "Orders", "Last Error", "Actions"].map((head) => <th className="px-3 py-3 font-semibold uppercase" key={head}>{head}</th>)}</tr></thead>
                 <tbody>
-                  {shown.map((terminal) => (
+                  {shown.length ? shown.map((terminal) => (
                     <Fragment key={terminal.terminalId}>
-                      <tr className={cn("border-b border-slate-100", selected.terminalId === terminal.terminalId && "bg-blue-50/40")} onClick={() => setSelectedId(terminal.terminalId)}>
+                      <tr className={cn("border-b border-slate-100", selected?.terminalId === terminal.terminalId && "bg-blue-50/40")} onClick={() => setSelectedId(terminal.terminalId)}>
                         <td className="px-3 py-3"><button aria-label={`Expand ${terminal.terminalName}`} onClick={(event) => { event.stopPropagation(); setExpandedId(expandedId === terminal.terminalId ? null : terminal.terminalId); }}>{expandedId === terminal.terminalId ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button></td>
                         <td className="px-3 py-3 font-semibold">{terminal.terminalName}<p className="font-normal text-slate-500">{terminal.terminalId}</p></td>
                         <td className="px-3 py-3">{terminal.brokerName}<p className="text-slate-500">{terminal.serverName}</p></td>
@@ -221,7 +225,7 @@ export function TerminalStatusDashboard() {
                         </td></tr>
                       ) : null}
                     </Fragment>
-                  ))}
+                  )) : <tr><td colSpan={22} className="px-3 py-8 text-center text-sm text-slate-500">No MT5 terminals registered yet. Complete onboarding in MT5 Control Center to begin monitoring.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -229,11 +233,13 @@ export function TerminalStatusDashboard() {
           </CardContent>
         </Card>
 
+        {selected ? (
         <section className="grid gap-4 xl:grid-cols-3">
           <Card><Title icon={Server} title="Terminal Identity" description={selected.terminalName} /><CardContent className="grid grid-cols-2 gap-2"><DetailItem label="UUID" value={selected.terminalUuid} /><DetailItem label="Broker" value={selected.brokerName} /><DetailItem label="Server" value={selected.serverName} /><DetailItem label="Account" value={`${selected.accountLogin} / ${selected.accountCurrency}`} /><DetailItem label="Path" value={selected.terminalPath} /><DetailItem label="Host" value={selected.hostMachine} /><DetailItem label="Region" value={selected.region} /><DetailItem label="Timezone" value={selected.timezone} /></CardContent></Card>
           <Card><Title icon={HeartPulse} title="Runtime & Resource Health" description={`${freeze.state} | ${pressure.level} pressure`} /><CardContent className="grid grid-cols-2 gap-2"><DetailItem label="Process" value={`${selected.processStatus} / PID ${selected.processId ?? "-"}`} state={selected.processStatus === "Running"} /><DetailItem label="Uptime" value={duration(selected.uptimeSeconds)} /><DetailItem label="Last Heartbeat" value={time(selected.lastHeartbeatAt)} /><DetailItem label="Delay" value={`${selected.heartbeatDelaySeconds}s`} state={selected.heartbeatDelaySeconds <= 30} /><DetailItem label="CPU / Memory" value={`${selected.cpuUsagePercent}% / ${selected.memoryUsagePercent}%`} /><DetailItem label="Disk / Latency" value={`${selected.diskUsagePercent}% / ${selected.networkLatencyMs}ms`} /><DetailItem label="Packet Loss" value={`${selected.packetLossPercent}%`} state={selected.packetLossPercent < 1} /><DetailItem label="Logs / Data" value={`${selected.logFileSizeMb}MB / ${selected.dataFolderSizeMb}MB`} /></CardContent></Card>
           <Card><Title icon={ShieldCheck} title="Trading Readiness" description={`Health score ${selected.healthScore}/100`} /><CardContent className="grid grid-cols-2 gap-2"><DetailItem label="Trading Enabled" value={selected.tradingEnabled ? "Enabled" : "Blocked"} state={selected.tradingEnabled} /><DetailItem label="Expert Advisors" value={selected.expertAdvisorsEnabled ? "Enabled" : "Disabled"} state={selected.expertAdvisorsEnabled} /><DetailItem label="DLL Imports" value={selected.dllImportsEnabled ? "Allowed" : "Blocked"} state={selected.dllImportsEnabled} /><DetailItem label="Account Trading" value={selected.accountTradeAllowed ? "Allowed" : "Blocked"} state={selected.accountTradeAllowed} /><DetailItem label="Market Data" value={selected.marketDataActive ? "Active" : "Inactive"} state={selected.marketDataActive} /><DetailItem label="Symbol Mappings" value={selected.symbolMappingsValid ? "Valid" : "Invalid"} state={selected.symbolMappingsValid} /><DetailItem label="Order Gateway" value={selected.orderGatewayConnected ? "Connected" : "Disconnected"} state={selected.orderGatewayConnected} /><DetailItem label="Risk Engine" value={selected.riskEngineConnected ? "Connected" : "Disconnected"} state={selected.riskEngineConnected} /></CardContent></Card>
         </section>
+        ) : null}
 
         <section className="grid gap-4 xl:grid-cols-[1.08fr_0.92fr]">
           <Card>

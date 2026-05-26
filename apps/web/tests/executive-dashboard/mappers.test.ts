@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getExecutiveDashboardMock } from "@/modules/executive-overview/executive-dashboard/data/executive-dashboard.mock";
+import { getExecutiveDashboardMock } from "@/tests/fixtures/executive-dashboard.fixture";
 import { mapExecutiveDashboardCharts } from "@/modules/executive-overview/executive-dashboard/utils/executive-dashboard-mappers";
 
 describe("executive dashboard mappers", () => {

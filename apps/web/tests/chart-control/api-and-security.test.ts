@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import {describe, expect, it, beforeEach } from "vitest";
+import { seedChartControlStore } from "@/tests/helpers/seed-api-stores";
 import { applyLayout, audits, buildChartControlResponse, captureSnapshot, changeTimeframe, chartRole, refreshCharts, toggleIndicator } from "@/app/api/mt5/chart-control/_lib/store";
 
 describe("Chart Control operational controls", () => {
+  beforeEach(() => seedChartControlStore());
   it("returns chart workspace panels, analysis, signals, and snapshots", () => {
     const response = buildChartControlResponse("Infrastructure Admin");
     expect(response.kpis).toHaveLength(8);
