@@ -5,6 +5,7 @@ export function createEaBridgeSeed() {
     messages: [],
     commands: [],
     logs: [],
-    diagnostics: []
+    diagnostics: [],
+    issuedCredentialSecrets: {} as Record<string, { ingestionTokenHash: string; signingSecret: string }>
   };
 }

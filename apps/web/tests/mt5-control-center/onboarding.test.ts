@@ -11,11 +11,11 @@ import { seedAccountSyncStore, seedEaBridgeStore, seedEaTerminalHubStore, seedMt
 
 function onboardingInput(suffix: string): TerminalOnboardingInput {
   return {
-    terminalUuid: `mt5-onboard-${suffix}`,
+    terminalUuid: "CACSMS-MT5-0001",
     terminalName: `MT5 Onboarding ${suffix}`,
     brokerId: "broker-icm",
     brokerName: "IC Markets",
-    serverName: "ICMarketsSC-Live23",
+    serverName: "ICMarketsSC-MT5",
     accountLogin: `91${suffix}`,
     accountName: `Onboard Account ${suffix}`,
     accountType: "Live",
@@ -105,5 +105,20 @@ describe("terminal onboarding workflow", () => {
     const synchronized = ingestSignedBridgeEvent(snapshot, "Account Snapshot", heartbeat);
     expect(synchronized.accountSync?.reconciliation.reconciliationStatus).toBe("Matched");
     expect(synchronized.accountSync?.account.tradingAllowed).toBe(false);
+  });
+
+  it("auto-generates terminal UUID when omitted from onboarding input", async () => {
+    const suffix = String(Date.now() + 2);
+    const input = onboardingInput(suffix);
+    delete input.terminalUuid;
+    const response = await onboardTerminal(new Request("http://localhost/api/mt5/onboarding/terminals", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-mt5-role": "Infrastructure Admin", "x-user-id": "infra-admin" },
+      body: JSON.stringify(input)
+    }));
+    expect(response.status).toBe(201);
+    const receipt = await response.json() as TerminalOnboardingReceipt;
+    expect(receipt.terminal.terminalUuid).toMatch(/^CACSMS-MT5-\d{4}$/i);
+    expect(receipt.terminal.id).toBe(receipt.terminal.terminalUuid);
   });
 });

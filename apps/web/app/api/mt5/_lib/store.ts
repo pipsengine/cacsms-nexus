@@ -1,3 +1,4 @@
+import { formatNigeriaTime } from "@/lib/nigeria-time";
 import { createMt5Seed } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/data/mt5-control-center.mock";
 import {
   analyzeSymbolMappings,
@@ -43,6 +44,7 @@ const actionRoles: Record<string, Mt5Role[]> = {
   "terminal.restart": ["Super Admin", "Infrastructure Admin"],
   "terminal.disable": ["Super Admin", "Infrastructure Admin"],
   "terminal.delete": ["Super Admin"],
+  "broker.register": ["Super Admin", "Infrastructure Admin"],
   "broker.sync": ["Super Admin", "Infrastructure Admin"],
   "broker.test": ["Super Admin", "Infrastructure Admin"],
   "broker.configure": ["Super Admin"],
@@ -88,13 +90,42 @@ export function getTerminal(id: string) {
   return state.terminals.find((terminal) => terminal.id === id);
 }
 
+export const TERMINAL_ID_PATTERN = /^CACSMS-MT5-\d{4}$/i;
+
+export function formatTerminalId(sequence: number) {
+  return `CACSMS-MT5-${String(sequence).padStart(4, "0")}`;
+}
+
+function nextTerminalIdSequence(existingIds: string[]) {
+  const sequences = existingIds
+    .map((value) => TERMINAL_ID_PATTERN.exec(value.trim())?.[1])
+    .filter((value): value is string => Boolean(value))
+    .map((value) => Number.parseInt(value, 10));
+  return sequences.length ? Math.max(...sequences) + 1 : 1;
+}
+
+export function createTerminalUuid() {
+  const existingIds = state.terminals.flatMap((terminal) => [terminal.id, terminal.terminalUuid]);
+  return formatTerminalId(nextTerminalIdSequence(existingIds));
+}
+
+function resolveTerminalId(value?: string) {
+  const trimmed = value?.trim();
+  if (!trimmed) return createTerminalUuid();
+  if (!TERMINAL_ID_PATTERN.test(trimmed)) {
+    throw new Error("Terminal ID must use the CACSMS-MT5-0000 format.");
+  }
+  return trimmed.toUpperCase();
+}
+
 export function registerTerminal(input: Partial<Terminal>, role: Mt5Role, request?: Request) {
   authorize(role, "terminal.register");
-  if (!input.terminalUuid || state.terminals.some((terminal) => terminal.terminalUuid === input.terminalUuid)) {
+  const terminalId = resolveTerminalId(input.terminalUuid ?? input.id);
+  if (state.terminals.some((terminal) => terminal.id === terminalId || terminal.terminalUuid === terminalId)) {
     throw new Error("Duplicate terminal registration or missing terminal UUID.");
   }
   const terminal: Terminal = {
-    id: `term-${Date.now()}`, terminalUuid: input.terminalUuid, terminalName: input.terminalName ?? "New MT5 Terminal",
+    id: terminalId, terminalUuid: terminalId, terminalName: input.terminalName ?? "New MT5 Terminal",
     brokerId: input.brokerId ?? "unassigned", brokerName: input.brokerName ?? "Unassigned", serverName: input.serverName ?? "Unknown",
     accountLogin: input.accountLogin ?? "-", accountType: input.accountType ?? "Demo", terminalVersion: input.terminalVersion ?? "Unknown",
     hostMachine: input.hostMachine ?? "Unassigned", status: "Syncing", cpuUsage: 0, memoryUsage: 0, diskUsage: 0, latencyMs: 0,
@@ -203,6 +234,59 @@ export function deleteTerminal(id: string, role: Mt5Role, request?: Request) {
 
 export function getBrokers() { return state.brokers; }
 export function getBroker(id: string) { return state.brokers.find((broker) => broker.id === id); }
+
+export type BrokerRegistrationInput = {
+  id?: string;
+  brokerName: string;
+  brokerCode: string;
+  mt5ServerName: string;
+  serverRegion: string;
+  connectionMode: string;
+  catalogId?: string;
+  confirmed?: boolean;
+};
+
+export function registerBroker(input: BrokerRegistrationInput, role: Mt5Role, request?: Request) {
+  authorize(role, "broker.register");
+  if (!input.confirmed) throw new Error("Confirmation is required for broker registration.");
+  const brokerName = input.brokerName?.trim();
+  const brokerCode = input.brokerCode?.trim();
+  const mt5ServerName = input.mt5ServerName?.trim();
+  const serverRegion = input.serverRegion?.trim();
+  const connectionMode = input.connectionMode?.trim();
+  if (!brokerName || !brokerCode || !mt5ServerName || !serverRegion || !connectionMode) {
+    throw new Error("Broker registration requires name, code, MT5 server, region, and connection mode.");
+  }
+  const id = input.id?.trim() || `broker-${brokerCode.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
+  if (state.brokers.some((broker) => broker.id === id)) {
+    throw new Error("A broker with this identifier is already registered.");
+  }
+  if (state.brokers.some((broker) => broker.brokerName === brokerName && broker.mt5ServerName === mt5ServerName)) {
+    throw new Error("This broker and MT5 server combination is already registered.");
+  }
+  const broker: Broker = {
+    id,
+    brokerName,
+    brokerCode: brokerCode.toUpperCase(),
+    mt5ServerName,
+    serverRegion,
+    connectionMode,
+    status: "Syncing",
+    averageLatencyMs: 0,
+    averageSpread: 0,
+    executionQualityScore: 0,
+    dataFeedQualityScore: 0,
+    slippageRate: 0,
+    requoteRate: 0,
+    failedOrderRate: 0,
+    uptimePercent: 0,
+    loginHealth: "Inactive",
+    lastIncident: null
+  };
+  state.brokers.push(broker);
+  audit(role, "Broker registered", id, null, broker, request);
+  return broker;
+}
 
 export function syncBrokers(role: Mt5Role, request?: Request) {
   authorize(role, "broker.sync");
@@ -340,7 +424,7 @@ export function buildControlCenter(role: Mt5Role = "Infrastructure Admin"): Mt5C
   const healthyBrokers = state.brokers.filter((broker) => broker.status !== "Critical").length;
   const tradeAllowedAccounts = state.accounts.filter((account) => account.tradeAllowed).length;
   const lastSuccessfulSync = state.accounts.length
-    ? new Date(Math.max(...state.accounts.map((account) => new Date(account.lastSyncAt).getTime()))).toLocaleTimeString()
+    ? formatNigeriaTime(Math.max(...state.accounts.map((account) => new Date(account.lastSyncAt).getTime())))
     : "—";
 
   return {
@@ -370,6 +454,7 @@ export function buildControlCenter(role: Mt5Role = "Infrastructure Admin"): Mt5C
     permissions: {
       role,
       canRegisterTerminal: ["Super Admin", "Infrastructure Admin"].includes(role),
+      canRegisterBroker: ["Super Admin", "Infrastructure Admin"].includes(role),
       canRestart: ["Super Admin", "Infrastructure Admin"].includes(role),
       canSync: ["Super Admin", "Infrastructure Admin", "Trading Admin"].includes(role),
       canDisableTrading: ["Super Admin", "Trading Admin"].includes(role),

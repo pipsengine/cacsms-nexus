@@ -4,16 +4,19 @@ import {
   Activity, AlertTriangle, ArrowRight, Bot, Cable, DatabaseZap, Gauge, Menu, Network, PowerOff, RefreshCw, RotateCcw,
   Server, ShieldAlert, ShieldCheck, Stethoscope, Unplug, Wallet, Workflow
 } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { formatNigeriaTime } from "@/lib/nigeria-time";
+import { useNigeriaClock } from "@/hooks/use-nigeria-clock";
 
 import { useMt5ControlCenter } from "../hooks/use-mt5-control-center";
-import type { Mt5Status, TerminalOnboardingInput, TerminalOnboardingReceipt } from "../types/mt5-control-center.types";
+import type { Mt5Status, TerminalOnboardingReceipt } from "../types/mt5-control-center.types";
+import { TerminalOnboardingPanel } from "./terminal-onboarding-panel";
 
 const statusVariant: Record<Mt5Status, "success" | "warning" | "destructive" | "default" | "secondary"> = {
   Healthy: "success", Warning: "warning", Critical: "destructive", Offline: "destructive", Syncing: "default", Inactive: "secondary"
@@ -24,7 +27,7 @@ function Status({ value }: { value: Mt5Status }) {
 }
 
 function time(value: string) {
-  return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return formatNigeriaTime(value);
 }
 
 function money(value: number, currency = "USD") {
@@ -53,14 +56,9 @@ function MetricBar({ label, value, max = 100, tone = "bg-blue-600", suffix = "" 
 
 export function Mt5ControlCenterDashboard() {
   const query = useMt5ControlCenter();
+  const nigeriaClock = useNigeriaClock();
   const [notice, setNotice] = useState<string | null>(null);
-  const [showOnboarding, setShowOnboarding] = useState(false);
   const [receipt, setReceipt] = useState<TerminalOnboardingReceipt | null>(null);
-  const [onboarding, setOnboarding] = useState<TerminalOnboardingInput>({
-    terminalUuid: "", terminalName: "", brokerId: "broker-icm", brokerName: "IC Markets", serverName: "ICMarketsSC-Live23", accountLogin: "",
-    accountName: "", accountType: "Live", currency: "USD", leverage: "1:100", terminalVersion: "5.00", hostMachine: "", eaName: "NexusBridgeEA",
-    operatingSystem: "Windows Server 2022", region: "", timezone: "UTC", terminalPath: "", symbolScope: ["EURUSD", "XAUUSD"]
-  });
 
   if (query.isError) {
     return <div className="mx-auto max-w-[1800px] px-4 py-6"><Card className="border-red-200 p-6"><h1 className="text-xl font-semibold">MT5 Control Center unavailable</h1><p className="mt-2 text-sm text-slate-600">The status service could not be reached. No trading action has been issued.</p><Button className="mt-4" onClick={() => query.refetch()}>Retry</Button></Card></div>;
@@ -84,19 +82,6 @@ export function Mt5ControlCenterDashboard() {
       setNotice(error instanceof Error ? error.message : "Operation failed.");
     }
   };
-  const submitOnboarding = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!window.confirm("Confirm terminal onboarding? The terminal and account will be created with trading disabled and the EA credential receipt will be shown once.")) return;
-    setNotice(null);
-    setReceipt(null);
-    try {
-      const provisioned = await query.action.mutateAsync({ path: "/api/mt5/onboarding/terminals", body: { ...onboarding, confirmed: true } }) as TerminalOnboardingReceipt;
-      setReceipt(provisioned);
-      setNotice("Terminal provisioned. Install and configure the EA, then wait for the first verified heartbeat.");
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Terminal onboarding failed.");
-    }
-  };
   const actions = [
     { label: "Sync Brokers", path: "/api/mt5/brokers/sync", icon: DatabaseZap, allowed: data.permissions.canSync && data.brokers.length > 0 },
     { label: "Restart Terminal", path: targetTerminal ? `/api/mt5/terminals/${targetTerminal.id}/restart` : "", icon: RotateCcw, allowed: data.permissions.canRestart && Boolean(targetTerminal) },
@@ -116,14 +101,15 @@ export function Mt5ControlCenterDashboard() {
             </div>
             <p className="mt-2 max-w-4xl text-sm text-slate-600">Centralized control room for MT5 terminals, broker sessions, execution gateways, and trading infrastructure health.</p>
             <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
+              <span className="rounded-lg bg-emerald-50 px-2.5 py-1.5 font-medium text-emerald-900">System time: {nigeriaClock}</span>
               <span className="rounded-lg bg-slate-50 px-2.5 py-1.5">Mode: {data.meta.monitoringMode}</span>
               <span className="rounded-lg bg-slate-50 px-2.5 py-1.5">Role: {data.permissions.role}</span>
-              <span className="rounded-lg bg-slate-50 px-2.5 py-1.5">Updated: {time(data.meta.timestamp)}</span>
+              <span className="rounded-lg bg-slate-50 px-2.5 py-1.5">Snapshot: {time(data.meta.timestamp)} WAT</span>
             </div>
           </div>
           <div className="hidden flex-wrap justify-end gap-2 sm:flex">
             <Button variant="outline" onClick={() => query.refetch()}><RefreshCw className="h-4 w-4" />Refresh Status</Button>
-            <Button variant="outline" disabled={!data.permissions.canRegisterTerminal} onClick={() => setShowOnboarding((open) => !open)}><Cable className="h-4 w-4" />Register Terminal</Button>
+            <Button variant="outline" onClick={() => document.getElementById("terminal-onboarding")?.scrollIntoView({ behavior: "smooth" })}><Cable className="h-4 w-4" />Register Terminal</Button>
             {actions.map(({ label, path, icon: Icon, allowed }) => <Button key={label} variant="outline" disabled={!allowed || query.action.isPending} onClick={() => invoke(label, path)}><Icon className="h-4 w-4" />{label}</Button>)}
             <Button variant="destructive" disabled={!data.permissions.canEmergencyShutdown || query.action.isPending} onClick={() => invoke("Emergency shutdown", "/api/mt5/trading/emergency-disable")}><PowerOff className="h-4 w-4" />Emergency Disable Trading</Button>
           </div>
@@ -132,7 +118,7 @@ export function Mt5ControlCenterDashboard() {
               <DropdownMenuTrigger asChild><Button variant="outline"><Menu className="h-4 w-4" />Actions</Button></DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onSelect={() => query.refetch()}>Refresh Status</DropdownMenuItem>
-                <DropdownMenuItem disabled={!data.permissions.canRegisterTerminal} onSelect={() => setShowOnboarding(true)}>Register Terminal</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => document.getElementById("terminal-onboarding")?.scrollIntoView({ behavior: "smooth" })}>Register Terminal</DropdownMenuItem>
                 {actions.map((action) => <DropdownMenuItem key={action.label} disabled={!action.allowed} onSelect={() => invoke(action.label, action.path)}>{action.label}</DropdownMenuItem>)}
                 <DropdownMenuItem disabled={!data.permissions.canEmergencyShutdown} className="text-red-700" onSelect={() => invoke("Emergency shutdown", "/api/mt5/trading/emergency-disable")}>Emergency Disable Trading</DropdownMenuItem>
               </DropdownMenuContent>
@@ -158,57 +144,21 @@ export function Mt5ControlCenterDashboard() {
         })}
       </section>
 
-      <Card>
-        <SectionTitle title="Terminal Onboarding" description="Register a terminal, bind a broker account, and issue a secure EA pairing receipt with trading disabled until verified." icon={Cable} />
+      <Card id="terminal-onboarding">
+        <SectionTitle title="Infrastructure Registration" description="Step 1: register your MT5 broker. Step 2: provision a terminal with an auto-assigned ID and EA pairing receipt." icon={Cable} />
         <CardContent>
           <div className="grid gap-3 text-xs lg:grid-cols-3">
-            <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-3"><p className="font-semibold text-blue-900">1. Provision</p><p className="mt-1 text-slate-600">Create the terminal, broker/account binding, monitoring row, and EA bridge instance.</p></div>
-            <div className="rounded-xl border border-purple-100 bg-purple-50/40 p-3"><p className="font-semibold text-purple-900">2. Pair EA</p><p className="mt-1 text-slate-600">Enter the one-time ingestion token and signing secret in <span className="font-mono">NexusBridgeEA</span>.</p></div>
-            <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-3"><p className="font-semibold text-emerald-900">3. Activate</p><p className="mt-1 text-slate-600">A verified signed heartbeat activates monitoring. Trading remains blocked pending readiness review.</p></div>
+            <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-3"><p className="font-semibold text-blue-900">1. Register broker</p><p className="mt-1 text-slate-600">Choose a catalog profile or enter a custom broker server before provisioning terminals.</p></div>
+            <div className="rounded-xl border border-purple-100 bg-purple-50/40 p-3"><p className="font-semibold text-purple-900">2. Provision terminal</p><p className="mt-1 text-slate-600">Terminal ID is generated automatically. Bind the MT5 account and host machine.</p></div>
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-3"><p className="font-semibold text-emerald-900">3. Pair EA &amp; activate</p><p className="mt-1 text-slate-600">Configure <span className="font-mono">NexusBridgeEA</span> with the one-time receipt, then verify the signed heartbeat.</p></div>
           </div>
-          {!data.permissions.canRegisterTerminal ? <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">Registration is locked for role <strong>{data.permissions.role}</strong>. For local development, enable server-only <span className="font-mono">MT5_LOCAL_OPERATOR_MODE=true</span> with <span className="font-mono">MT5_LOCAL_OPERATOR_ROLE=Infrastructure Admin</span> and restart the web server. Production requires authenticated RBAC.</p> : null}
-          {showOnboarding ? (
-            <form aria-label="Terminal onboarding form" className="mt-4 rounded-xl border border-slate-200 p-4" onSubmit={submitOnboarding}>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {[
-                  ["Terminal UUID", "terminalUuid"], ["Terminal Name", "terminalName"], ["Account Login", "accountLogin"], ["Account Name", "accountName"],
-                  ["Host Machine", "hostMachine"], ["Region", "region"], ["Terminal Path", "terminalPath"], ["EA Name", "eaName"]
-                ].map(([label, key]) => (
-                  <label key={key} className="text-xs font-semibold text-slate-600">{label}
-                    <input required={["terminalUuid", "terminalName", "accountLogin", "accountName", "hostMachine", "eaName"].includes(key)} value={String(onboarding[key as keyof TerminalOnboardingInput] ?? "")} onChange={(event) => setOnboarding((value) => ({ ...value, [key]: event.target.value }))} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 font-normal text-slate-900 outline-none focus:border-blue-500" />
-                  </label>
-                ))}
-                <label className="text-xs font-semibold text-slate-600">Broker
-                  <select value={onboarding.brokerId} disabled={!data.brokers.length} onChange={(event) => {
-                    const selected = data.brokers.find((broker) => broker.id === event.target.value);
-                    if (selected) setOnboarding((value) => ({ ...value, brokerId: selected.id, brokerName: selected.brokerName, serverName: selected.mt5ServerName }));
-                  }} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 font-normal text-slate-900 disabled:bg-slate-50">
-                    {data.brokers.length ? data.brokers.map((broker) => <option key={broker.id} value={broker.id}>{broker.brokerName}</option>) : <option value="">No brokers registered</option>}
-                  </select>
-                </label>
-                <label className="text-xs font-semibold text-slate-600">Server<input readOnly value={onboarding.serverName} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 font-normal" /></label>
-                <label className="text-xs font-semibold text-slate-600">Account Type<input value={onboarding.accountType} onChange={(event) => setOnboarding((value) => ({ ...value, accountType: event.target.value }))} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 font-normal" /></label>
-                <label className="text-xs font-semibold text-slate-600">Leverage<input value={onboarding.leverage} onChange={(event) => setOnboarding((value) => ({ ...value, leverage: event.target.value }))} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 font-normal" /></label>
-              </div>
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                <Button type="submit" disabled={!data.permissions.canRegisterTerminal || query.action.isPending}>Provision Terminal &amp; EA Pairing</Button>
-                <Button type="button" variant="ghost" onClick={() => setShowOnboarding(false)}>Cancel</Button>
-                <Badge variant="warning">Trading disabled during onboarding</Badge>
-              </div>
-            </form>
-          ) : null}
-          {receipt ? (
-            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/40 p-4 text-xs">
-              <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold text-slate-950">One-Time EA Pairing Receipt: {receipt.eaInstanceId}</p><Badge variant="warning">{receipt.state}</Badge></div>
-              <p className="mt-2 text-amber-800">Store these values in the terminal EA inputs now. The plaintext credentials are not shown again in monitoring responses.</p>
-              <div className="mt-3 grid gap-2 lg:grid-cols-2">
-                <p className="rounded-lg bg-white p-3"><strong>NexusBaseUrl</strong><br /><span className="break-all font-mono">{receipt.nexusBaseUrl}</span></p>
-                <p className="rounded-lg bg-white p-3"><strong>EaInstanceId</strong><br /><span className="break-all font-mono">{receipt.eaInstanceId}</span></p>
-                <p className="rounded-lg bg-white p-3"><strong>IngestionToken</strong><br /><span className="break-all font-mono">{receipt.ingestionToken}</span></p>
-                <p className="rounded-lg bg-white p-3"><strong>SigningSecret</strong><br /><span className="break-all font-mono">{receipt.signingSecret}</span></p>
-              </div>
-            </div>
-          ) : null}
+          <TerminalOnboardingPanel
+            data={data}
+            action={query.action}
+            onNotice={setNotice}
+            onReceipt={setReceipt}
+            receipt={receipt}
+          />
         </CardContent>
       </Card>
 

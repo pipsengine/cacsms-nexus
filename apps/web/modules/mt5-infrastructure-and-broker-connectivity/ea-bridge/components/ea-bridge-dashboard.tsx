@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 
 import { calculateDeliveryReliability, classifyTokenRisk } from "../algorithms/ea-bridge.algorithms";
 import { useEaBridge } from "../hooks/use-ea-bridge";
-import type { BridgeSeverity, BridgeTone } from "../types/ea-bridge.types";
+import type { BridgeSeverity, BridgeTone, EaPairingReceipt } from "../types/ea-bridge.types";
 
 const statusVariant: Record<BridgeTone, "success" | "warning" | "destructive" | "default" | "secondary"> = {
   Healthy: "success", Watch: "warning", Degraded: "warning", Critical: "destructive", Offline: "destructive", Syncing: "default", Inactive: "secondary"
@@ -43,6 +43,7 @@ export function EaBridgeDashboard() {
   const [sort, setSort] = useState("risk");
   const [logFilter, setLogFilter] = useState("All");
   const [notice, setNotice] = useState<string | null>(null);
+  const [pairingReceipt, setPairingReceipt] = useState<EaPairingReceipt | null>(null);
   function setExpandedId(id: string | null) {
     updateExpandedId(id);
     if (id) setSelectedId(id);
@@ -71,6 +72,22 @@ export function EaBridgeDashboard() {
     { label: "Feedback received", status: feedbackCount < data.commands.filter((command) => command.executionStatus === "Executed").length ? "Degraded" : "Healthy", detail: `${feedbackCount} confirmed` }
   ];
 
+  async function reissuePairing(instanceId: string, label: string) {
+    if (!window.confirm(`Confirm ${label.toLowerCase()}? Previous EA pairing tokens will stop working.`)) return;
+    setNotice(null);
+    try {
+      const result = await query.action.mutateAsync({
+        path: `/api/mt5/ea-bridge/instances/${instanceId}/reissue-pairing`,
+        body: { confirmed: true }
+      });
+      setPairingReceipt(result as EaPairingReceipt);
+      setNotice(`${label} completed. Copy the new receipt below into NexusBridgeEA inputs.`);
+    } catch (error) {
+      setPairingReceipt(null);
+      setNotice(error instanceof Error ? error.message : "EA pairing reissue failed.");
+    }
+  }
+
   async function command(label: string, path: string, body?: Record<string, unknown>) {
     if (!path) {
       setNotice("No EA instance is selected for this action yet.");
@@ -89,7 +106,8 @@ export function EaBridgeDashboard() {
     { label: "Sync EA Instances", icon: DatabaseZap, path: "/api/mt5/ea-bridge/instances/sync", allowed: data.permissions.canSync },
     { label: "Run Bridge Diagnostics", icon: Stethoscope, path: "/api/mt5/ea-bridge/diagnostics", allowed: data.permissions.canDiagnostics },
     { label: "Restart Bridge", icon: RotateCcw, path: selected ? `/api/mt5/ea-bridge/instances/${selected.id}/restart` : "", allowed: data.permissions.canRestart && Boolean(selected) },
-    { label: "Rotate Bridge Token", icon: KeyRound, path: selected ? `/api/mt5/ea-bridge/instances/${selected.id}/rotate-token` : "", allowed: data.permissions.canRotateToken && Boolean(selected) }
+    { label: "Rotate Bridge Token", icon: KeyRound, path: selected ? `/api/mt5/ea-bridge/instances/${selected.id}/rotate-token` : "", allowed: data.permissions.canRotateToken && Boolean(selected) },
+    { label: "Reissue EA Pairing", icon: KeyRound, path: selected ? `/api/mt5/ea-bridge/instances/${selected.id}/reissue-pairing` : "", allowed: data.permissions.canReissuePairing && Boolean(selected), reissue: true }
   ];
 
   return (
@@ -105,13 +123,42 @@ export function EaBridgeDashboard() {
           </div>
           <div className="hidden flex-wrap justify-end gap-2 sm:flex">
             <Button variant="outline" onClick={() => query.refetch()}><RefreshCw className="h-4 w-4" />Refresh Bridge</Button>
-            {actions.map(({ label, icon: Icon, path, allowed }) => <Button key={label} variant="outline" disabled={!allowed || query.action.isPending} onClick={() => command(label, path)}><Icon className="h-4 w-4" />{label}</Button>)}
+            {actions.map(({ label, icon: Icon, path, allowed, reissue }) => (
+              <Button
+                key={label}
+                variant="outline"
+                disabled={!allowed || query.action.isPending}
+                onClick={() => (reissue && selected ? reissuePairing(selected.id, label) : command(label, path))}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </Button>
+            ))}
             <Button variant="destructive" disabled={!data.permissions.canEmergencyDisable} onClick={() => command("Disable all EA trading channels", "/api/mt5/ea-bridge/trading/emergency-disable")}><PowerOff className="h-4 w-4" />Disable EA Trading Channel</Button>
           </div>
-          <div className="sm:hidden"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline"><Menu className="h-4 w-4" />Actions</Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => query.refetch()}>Refresh Bridge</DropdownMenuItem>{actions.map((action) => <DropdownMenuItem key={action.label} disabled={!action.allowed} onSelect={() => command(action.label, action.path)}>{action.label}</DropdownMenuItem>)}<DropdownMenuItem disabled={!data.permissions.canEmergencyDisable} className="text-red-700" onSelect={() => command("Disable all EA trading channels", "/api/mt5/ea-bridge/trading/emergency-disable")}>Disable EA Trading Channel</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div>
+          <div className="sm:hidden"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline"><Menu className="h-4 w-4" />Actions</Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => query.refetch()}>Refresh Bridge</DropdownMenuItem>{actions.map((action) => <DropdownMenuItem key={action.label} disabled={!action.allowed} onSelect={() => (action.reissue && selected ? reissuePairing(selected.id, action.label) : command(action.label, action.path))}>{action.label}</DropdownMenuItem>)}<DropdownMenuItem disabled={!data.permissions.canEmergencyDisable} className="text-red-700" onSelect={() => command("Disable all EA trading channels", "/api/mt5/ea-bridge/trading/emergency-disable")}>Disable EA Trading Channel</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div>
         </div>
         {notice ? <p className="border-t border-slate-100 px-5 py-2.5 text-xs font-semibold text-blue-700">{notice}</p> : null}
       </section>
+
+      {pairingReceipt ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-semibold text-slate-950">One-Time EA Pairing Receipt: {pairingReceipt.eaInstanceId}</p>
+            <Badge variant="warning">{pairingReceipt.state}</Badge>
+          </div>
+          <p className="mt-2 text-amber-800">
+            Terminal <span className="font-mono">{pairingReceipt.terminalName}</span> / account{" "}
+            <span className="font-mono">{pairingReceipt.accountLogin}</span> — copy these into NexusBridgeEA inputs now. They cannot be viewed again after you leave this page.
+          </p>
+          <div className="mt-3 grid gap-2 lg:grid-cols-2">
+            <p className="rounded-lg bg-white p-3"><strong>NexusBaseUrl</strong><br /><span className="break-all font-mono">{pairingReceipt.nexusBaseUrl}</span></p>
+            <p className="rounded-lg bg-white p-3"><strong>EaInstanceId</strong><br /><span className="break-all font-mono">{pairingReceipt.eaInstanceId}</span></p>
+            <p className="rounded-lg bg-white p-3"><strong>IngestionToken</strong><br /><span className="break-all font-mono">{pairingReceipt.ingestionToken}</span></p>
+            <p className="rounded-lg bg-white p-3"><strong>SigningSecret</strong><br /><span className="break-all font-mono">{pairingReceipt.signingSecret}</span></p>
+          </div>
+        </div>
+      ) : null}
 
       <section className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
         {data.kpis.map((kpi) => <Card key={kpi.label} className={cn("border-t-4", statusBorder[kpi.status])}><CardContent className="p-3.5"><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{kpi.label}</p><p className="mt-2 text-xl font-semibold">{kpi.value}</p><p className="mt-1 truncate text-[11px] text-slate-500">{kpi.detail}</p></CardContent></Card>)}
@@ -121,9 +168,9 @@ export function EaBridgeDashboard() {
         <Card className="border-t-4 border-t-blue-500">
           <Title icon={Cable} title="Connect An MT5 Terminal" description="Terminal-side installation and pairing sequence." />
           <CardContent className="space-y-2 text-xs text-slate-600">
-            <p><strong className="text-slate-900">1.</strong> Compile and attach <span className="font-mono text-blue-700">NexusBridgeEA.mq5</span> inside the logged-in MT5 terminal.</p>
+            <p><strong className="text-slate-900">1.</strong> Compile and attach <span className="font-mono text-blue-700">Experts/NexusBridgeEA/NexusBridgeEA</span> inside the logged-in MT5 terminal.</p>
             <p><strong className="text-slate-900">2.</strong> Allow the Nexus HTTPS origin in MT5 WebRequest settings.</p>
-            <p><strong className="text-slate-900">3.</strong> Pair the EA instance ID, ingestion token, and per-instance signing secret.</p>
+            <p><strong className="text-slate-900">3.</strong> Pair the EA instance ID, ingestion token, and signing secret. Lost the receipt? Use <strong>Reissue EA Pairing</strong> on this page.</p>
           </CardContent>
         </Card>
         <Card className="border-t-4 border-t-emerald-500">
@@ -153,7 +200,7 @@ export function EaBridgeDashboard() {
         <Title icon={Cable} title="EA Instance Registry" description="Search, assess, and control authenticated EA-to-terminal bindings." />
         <CardContent>
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:justify-between"><label className="flex h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm sm:w-80"><Search className="h-4 w-4 text-slate-400" /><input aria-label="Search EA instances" className="w-full outline-none" placeholder="Search EA, terminal, broker..." value={search} onChange={(event) => setSearch(event.target.value)} /></label><label className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs text-slate-600">Sort<select aria-label="Sort EA instances" className="h-9 bg-white outline-none" value={sort} onChange={(event) => setSort(event.target.value)}><option value="risk">Risk</option><option value="latency">Latency</option><option value="messages">Messages</option></select></label></div>
-          <div className="overflow-x-auto"><table aria-label="EA instance registry" className="w-full min-w-[1720px] text-left text-xs"><thead className="border-y border-slate-100 bg-slate-50"><tr>{["EA Instance", "Terminal", "Broker / Account", "Symbols", "Version / Build", "Token", "Connection", "Heartbeat", "Last Heartbeat", "Messages", "Failed", "Latency", "Trading Channel", "Last Error", "Risk", "Actions"].map((head) => <th key={head} className="px-3 py-3 font-semibold uppercase text-slate-500">{head}</th>)}</tr></thead><tbody>{instances.length ? instances.map((instance) => <tr key={instance.id} className={cn("border-b border-slate-100", selected?.id === instance.id && "bg-blue-50/30")} onClick={() => { setSelectedId(instance.id); setExpandedId(instance.id); }}><td className="px-3 py-3 font-semibold">{instance.eaName}<p className="font-normal text-slate-500">{instance.id}</p></td><td className="px-3 py-3">{instance.terminalName}</td><td className="px-3 py-3">{instance.brokerName}<p className="text-slate-500">{instance.accountLogin}</p></td><td className="px-3 py-3">{instance.symbolScope.join(", ")}</td><td className="px-3 py-3">{instance.eaVersion}<p className="text-slate-500">Build {instance.buildNumber}</p></td><td className="px-3 py-3">{instance.tokenStatus}<p className="text-purple-700">{classifyTokenRisk(instance)} risk</p></td><td className="px-3 py-3"><Status value={instance.connectionStatus} /></td><td className="px-3 py-3"><Status value={instance.heartbeatStatus} /></td><td className="px-3 py-3">{time(instance.lastHeartbeatAt)}</td><td className="px-3 py-3">{instance.messageCount.toLocaleString()}</td><td className="px-3 py-3">{instance.failedMessageCount}</td><td className="px-3 py-3">{instance.averageLatencyMs}ms</td><td className="px-3 py-3"><Badge variant={instance.tradingChannelEnabled ? "success" : "destructive"}>{instance.tradingChannelEnabled ? "Enabled" : "Disabled"}</Badge></td><td className="max-w-48 truncate px-3 py-3 text-red-700">{instance.lastError ?? "None"}</td><td className="px-3 py-3"><Status value={instance.riskLevel} /></td><td className="px-3 py-3" onClick={(event) => event.stopPropagation()}><DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" variant="outline">Actions</Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => setSelectedId(instance.id)}>View Details</DropdownMenuItem><DropdownMenuItem disabled={!data.permissions.canDiagnostics} onSelect={() => command("Run diagnostics", `/api/mt5/ea-bridge/instances/${instance.id}/diagnostics`)}>Run Diagnostics</DropdownMenuItem><DropdownMenuItem disabled={!data.permissions.canRestart} onSelect={() => command("Restart bridge session", `/api/mt5/ea-bridge/instances/${instance.id}/restart`)}>Restart Bridge Session</DropdownMenuItem><DropdownMenuItem disabled={!data.permissions.canTradeControl || !instance.tradingChannelEnabled} onSelect={() => command("Disable trading channel", `/api/mt5/ea-bridge/instances/${instance.id}/disable-trading-channel`)}>Disable Trading Channel</DropdownMenuItem><DropdownMenuItem disabled={!data.permissions.canTradeControl || instance.tradingChannelEnabled} onSelect={() => command("Enable trading channel", `/api/mt5/ea-bridge/instances/${instance.id}/enable-trading-channel`)}>Enable Trading Channel</DropdownMenuItem><DropdownMenuItem disabled={!data.permissions.canRotateToken} onSelect={() => command("Rotate token", `/api/mt5/ea-bridge/instances/${instance.id}/rotate-token`)}>Rotate Token</DropdownMenuItem><DropdownMenuItem onSelect={() => setExpandedId(instance.id)}>View Logs</DropdownMenuItem><DropdownMenuItem disabled={!data.permissions.canRebindTerminal} onSelect={() => command("Rebind terminal", `/api/mt5/ea-bridge/instances/${instance.id}/rebind-terminal`, { terminalName: instance.terminalName })}>Rebind Terminal</DropdownMenuItem></DropdownMenuContent></DropdownMenu></td></tr>) : <tr><td colSpan={16} className="px-3 py-8 text-center text-sm text-slate-500">No EA bridge instances registered. Complete MT5 terminal onboarding and attach NexusBridgeEA to begin signed telemetry.</td></tr>}</tbody></table></div>
+          <div className="overflow-x-auto"><table aria-label="EA instance registry" className="w-full min-w-[1720px] text-left text-xs"><thead className="border-y border-slate-100 bg-slate-50"><tr>{["EA Instance", "Terminal", "Broker / Account", "Symbols", "Version / Build", "Token", "Connection", "Heartbeat", "Last Heartbeat", "Messages", "Failed", "Latency", "Trading Channel", "Last Error", "Risk", "Actions"].map((head) => <th key={head} className="px-3 py-3 font-semibold uppercase text-slate-500">{head}</th>)}</tr></thead><tbody>{instances.length ? instances.map((instance) => <tr key={instance.id} className={cn("border-b border-slate-100", selected?.id === instance.id && "bg-blue-50/30")} onClick={() => { setSelectedId(instance.id); setExpandedId(instance.id); }}><td className="px-3 py-3 font-semibold">{instance.eaName}<p className="font-normal text-slate-500">{instance.id}</p></td><td className="px-3 py-3">{instance.terminalName}</td><td className="px-3 py-3">{instance.brokerName}<p className="text-slate-500">{instance.accountLogin}</p></td><td className="px-3 py-3">{instance.symbolScope.join(", ")}</td><td className="px-3 py-3">{instance.eaVersion}<p className="text-slate-500">Build {instance.buildNumber}</p></td><td className="px-3 py-3">{instance.tokenStatus}<p className="text-purple-700">{classifyTokenRisk(instance)} risk</p></td><td className="px-3 py-3"><Status value={instance.connectionStatus} /></td><td className="px-3 py-3"><Status value={instance.heartbeatStatus} /></td><td className="px-3 py-3">{time(instance.lastHeartbeatAt)}</td><td className="px-3 py-3">{instance.messageCount.toLocaleString()}</td><td className="px-3 py-3">{instance.failedMessageCount}</td><td className="px-3 py-3">{instance.averageLatencyMs}ms</td><td className="px-3 py-3"><Badge variant={instance.tradingChannelEnabled ? "success" : "destructive"}>{instance.tradingChannelEnabled ? "Enabled" : "Disabled"}</Badge></td><td className="max-w-48 truncate px-3 py-3 text-red-700">{instance.lastError ?? "None"}</td><td className="px-3 py-3"><Status value={instance.riskLevel} /></td><td className="px-3 py-3" onClick={(event) => event.stopPropagation()}><DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" variant="outline">Actions</Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => setSelectedId(instance.id)}>View Details</DropdownMenuItem><DropdownMenuItem disabled={!data.permissions.canDiagnostics} onSelect={() => command("Run diagnostics", `/api/mt5/ea-bridge/instances/${instance.id}/diagnostics`)}>Run Diagnostics</DropdownMenuItem><DropdownMenuItem disabled={!data.permissions.canRestart} onSelect={() => command("Restart bridge session", `/api/mt5/ea-bridge/instances/${instance.id}/restart`)}>Restart Bridge Session</DropdownMenuItem><DropdownMenuItem disabled={!data.permissions.canTradeControl || !instance.tradingChannelEnabled} onSelect={() => command("Disable trading channel", `/api/mt5/ea-bridge/instances/${instance.id}/disable-trading-channel`)}>Disable Trading Channel</DropdownMenuItem><DropdownMenuItem disabled={!data.permissions.canTradeControl || instance.tradingChannelEnabled} onSelect={() => command("Enable trading channel", `/api/mt5/ea-bridge/instances/${instance.id}/enable-trading-channel`)}>Enable Trading Channel</DropdownMenuItem><DropdownMenuItem disabled={!data.permissions.canRotateToken} onSelect={() => command("Rotate token", `/api/mt5/ea-bridge/instances/${instance.id}/rotate-token`)}>Rotate Token</DropdownMenuItem><DropdownMenuItem disabled={!data.permissions.canReissuePairing} onSelect={() => reissuePairing(instance.id, "Reissue EA pairing")}>Reissue EA Pairing</DropdownMenuItem><DropdownMenuItem onSelect={() => setExpandedId(instance.id)}>View Logs</DropdownMenuItem><DropdownMenuItem disabled={!data.permissions.canRebindTerminal} onSelect={() => command("Rebind terminal", `/api/mt5/ea-bridge/instances/${instance.id}/rebind-terminal`, { terminalName: instance.terminalName })}>Rebind Terminal</DropdownMenuItem></DropdownMenuContent></DropdownMenu></td></tr>) : <tr><td colSpan={16} className="px-3 py-8 text-center text-sm text-slate-500">No EA bridge instances registered. Complete MT5 terminal onboarding and attach NexusBridgeEA to begin signed telemetry.</td></tr>}</tbody></table></div>
           {expandedId && expanded ? <div className="mt-4 grid gap-3 rounded-xl border border-blue-100 bg-blue-50/30 p-4 md:grid-cols-4"><div><p className="text-xs font-semibold uppercase text-slate-500">Token Controls</p><p className="mt-2 text-xs">{expanded.tokenStatus}</p><p className="text-[11px] text-slate-500">Stored credential hash is never exposed in monitoring responses.</p></div><div><p className="text-xs font-semibold uppercase text-slate-500">Identity Security</p><p className="mt-2 text-xs">IP: {expanded.currentIpAddress}</p><p className="text-xs">Fingerprint: {expanded.knownDeviceFingerprint ? "Trusted" : "Unknown"}</p></div><div><p className="text-xs font-semibold uppercase text-slate-500">Channel Health</p><p className="mt-2 text-xs">Token risk: {classifyTokenRisk(expanded)}</p><p className="text-xs">Auth failures: {expanded.failedAuthenticationAttempts}</p></div><div><p className="text-xs font-semibold uppercase text-purple-700">AI Recommendation</p><p className="mt-2 text-xs text-purple-800">{data.diagnostics.find((item) => item.eaInstanceId === expanded.id)?.recommendation ?? "Maintain monitoring."}</p></div></div> : null}
         </CardContent>
       </Card>

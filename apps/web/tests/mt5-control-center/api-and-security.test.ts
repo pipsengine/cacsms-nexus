@@ -1,13 +1,20 @@
-import {describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach } from "vitest";
 import { seedMt5ControlCenterStore } from "@/tests/helpers/seed-api-stores";
+import { createMt5Seed } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/data/mt5-control-center.mock";
 
 import {
   buildControlCenter,
   getAuditRecords,
+  getBrokers,
   getRole,
+  registerBroker,
+  resetMt5ControlCenterState,
   restartTerminal,
   syncBrokers
 } from "@/app/api/mt5/_lib/store";
+import { provisionBrokerConnectionFromRegistration } from "@/app/api/mt5/broker-connections/_lib/store";
+import { resetBrokerConnectionsState } from "@/app/api/mt5/broker-connections/_lib/store";
+import { createBrokerConnectionsSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/broker-connections/data/broker-connections.mock";
 
 describe("MT5 control API domain", () => {
   beforeEach(() => seedMt5ControlCenterStore());
@@ -32,5 +39,22 @@ describe("MT5 control API domain", () => {
     syncBrokers("Infrastructure Admin");
     expect(getAuditRecords().length).toBe(count + 1);
     expect(getAuditRecords()[0].action).toBe("Broker synchronization");
+  });
+
+  it("registers a broker and mirrors it into broker connections", () => {
+    resetMt5ControlCenterState(createMt5Seed());
+    resetBrokerConnectionsState(createBrokerConnectionsSeed());
+    const broker = registerBroker({
+      id: "broker-custom",
+      brokerName: "Custom Broker",
+      brokerCode: "CUST",
+      mt5ServerName: "Custom-Live01",
+      serverRegion: "London",
+      connectionMode: "MT5 TCP",
+      confirmed: true
+    }, "Infrastructure Admin");
+    provisionBrokerConnectionFromRegistration(broker, "Infrastructure Admin");
+    expect(getBrokers()).toHaveLength(1);
+    expect(broker.id).toBe("broker-custom");
   });
 });

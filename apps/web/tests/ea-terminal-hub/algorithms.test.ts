@@ -31,8 +31,8 @@ describe("EA terminal hub algorithms", () => {
 
   it("detects hash mismatch when sizes match", () => {
     const result = compareEaFolders(
-      [sampleFile("NexusBridgeEA.mq5", 100, "aaa")],
-      [sampleFile("NexusBridgeEA.mq5", 100, "bbb")]
+      [sampleFile("NexusBridgeEA/NexusBridgeEA.mq5", 100, "aaa")],
+      [sampleFile("NexusBridgeEA/NexusBridgeEA.mq5", 100, "bbb")]
     );
     expect(result.hashMismatches).toBe(1);
     expect(result.drift[0]?.status).toBe("Hash Mismatch");
@@ -78,7 +78,7 @@ describe("EA terminal hub algorithms", () => {
   });
 
   it("builds sync preview for missing artifacts", () => {
-    const preview = buildSyncPreview([sampleFile("NexusBridgeEA.mq5", 100)], []);
+    const preview = buildSyncPreview([sampleFile("NexusBridgeEA/NexusBridgeEA.mq5", 100)], []);
     expect(preview).toHaveLength(1);
     expect(preview[0]?.action).toBe("Create");
   });

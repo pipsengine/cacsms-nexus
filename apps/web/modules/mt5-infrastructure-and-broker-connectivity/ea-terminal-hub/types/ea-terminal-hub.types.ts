@@ -35,6 +35,7 @@ export type Mt5TerminalLink = {
   hostMachine: string;
   region: string;
   terminalExecutablePath: string;
+  mt5DataPath: string | null;
   mt5DataRoot: string;
   mt5ExpertsPath: string;
   mt5IncludePath: string;
@@ -127,6 +128,7 @@ export type ConnectTerminalsRequest = {
 export type LinkFolderRequest = {
   terminalId: string;
   confirmed?: boolean;
+  mt5DataPath?: string;
   fileNames?: string[];
   relativePaths?: string[];
 };

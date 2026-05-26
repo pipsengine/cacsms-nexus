@@ -25,7 +25,7 @@ export type Terminal = {
 };
 
 export type TerminalOnboardingInput = {
-  terminalUuid: string;
+  terminalUuid?: string;
   terminalName: string;
   brokerId: string;
   brokerName: string;
@@ -42,6 +42,7 @@ export type TerminalOnboardingInput = {
   region?: string;
   timezone?: string;
   terminalPath?: string;
+  mt5DataPath?: string;
   eaName: string;
   symbolScope?: string[];
   confirmed?: boolean;
@@ -226,6 +227,7 @@ export type Mt5ControlCenterResponse = {
   permissions: {
     role: Mt5Role;
     canRegisterTerminal: boolean;
+    canRegisterBroker: boolean;
     canRestart: boolean;
     canSync: boolean;
     canDisableTrading: boolean;

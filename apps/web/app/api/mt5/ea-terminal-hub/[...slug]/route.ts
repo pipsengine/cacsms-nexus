@@ -91,6 +91,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
           {
             terminalId: String(body.terminalId ?? ""),
             confirmed: Boolean(body.confirmed),
+            mt5DataPath: body.mt5DataPath ? String(body.mt5DataPath) : undefined,
             fileNames: body.fileNames as string[] | undefined,
             relativePaths: body.relativePaths as string[] | undefined
           },
@@ -113,6 +114,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
           {
             terminalName: String(body.terminalName ?? "Custom Terminal"),
             terminalExecutablePath: String(body.terminalExecutablePath ?? ""),
+            mt5DataPath: body.mt5DataPath ? String(body.mt5DataPath) : undefined,
             brokerName: String(body.brokerName ?? "Unassigned"),
             accountLogin: String(body.accountLogin ?? "00000000"),
             hostMachine: String(body.hostMachine ?? "LOCAL"),

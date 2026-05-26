@@ -9,7 +9,7 @@ import {
 import type { Mt5TerminalLink } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-terminal-hub/types/ea-terminal-hub.types";
 import { bridgeInstances } from "../../ea-bridge/_lib/store";
 import { terminalRecords } from "../../terminal-status/_lib/store";
-import { deriveMt5DataRoot, deriveMt5ExpertsPath, deriveMt5IncludePath, resolveCacsmsEaRoot } from "./paths";
+import { resolveCacsmsEaRoot, resolveMt5FolderLayout } from "./paths";
 
 function bridgeForTerminal(terminalId: string) {
   return bridgeInstances().find((instance) => instance.terminalId === terminalId) ?? null;
@@ -25,9 +25,16 @@ export function mergeTerminalLiveState(terminal: Mt5TerminalLink): Mt5TerminalLi
 
   if (monitor?.terminalPath && monitor.terminalPath !== "Pending terminal installation") {
     terminal.terminalExecutablePath = monitor.terminalPath;
-    terminal.mt5DataRoot = deriveMt5DataRoot(monitor.terminalPath);
-    terminal.mt5ExpertsPath = deriveMt5ExpertsPath(monitor.terminalPath);
-    terminal.mt5IncludePath = deriveMt5IncludePath(monitor.terminalPath);
+    if (monitor.mt5DataPath) {
+      terminal.mt5DataPath = monitor.mt5DataPath;
+    }
+    const layout = resolveMt5FolderLayout({
+      terminalExecutablePath: monitor.terminalPath,
+      mt5DataPath: terminal.mt5DataPath
+    });
+    terminal.mt5DataRoot = layout.mt5DataRoot;
+    terminal.mt5ExpertsPath = layout.mt5ExpertsPath;
+    terminal.mt5IncludePath = layout.mt5IncludePath;
     terminal.terminalUuid = monitor.terminalUuid;
     terminal.hostMachine = monitor.hostMachine;
     terminal.region = monitor.region;
@@ -71,7 +78,17 @@ export function syncTerminalProfilesFromInfrastructure(existing: Mt5TerminalLink
     const terminalPath = monitor.terminalPath !== "Pending terminal installation" ? monitor.terminalPath : "";
     byId.set(
       monitor.terminalId,
-      createTerminalLinkFromMonitor(monitor.terminalId, monitor.terminalUuid, monitor.terminalName, monitor.brokerName, monitor.accountLogin, monitor.hostMachine, monitor.region, terminalPath)
+      createTerminalLinkFromMonitor(
+        monitor.terminalId,
+        monitor.terminalUuid,
+        monitor.terminalName,
+        monitor.brokerName,
+        monitor.accountLogin,
+        monitor.hostMachine,
+        monitor.region,
+        terminalPath,
+        monitor.mt5DataPath ?? null
+      )
     );
   }
   return [...byId.values()];
@@ -85,9 +102,11 @@ export function createTerminalLinkFromMonitor(
   accountLogin: string,
   hostMachine: string,
   region: string,
-  terminalExecutablePath: string
+  terminalExecutablePath: string,
+  mt5DataPath?: string | null
 ): Mt5TerminalLink {
   const executable = terminalExecutablePath || "C:\\MT5\\Pending\\terminal64.exe";
+  const layout = resolveMt5FolderLayout({ terminalExecutablePath: executable, mt5DataPath });
   return {
     terminalId,
     terminalUuid,
@@ -97,9 +116,10 @@ export function createTerminalLinkFromMonitor(
     hostMachine,
     region,
     terminalExecutablePath: executable,
-    mt5DataRoot: deriveMt5DataRoot(executable),
-    mt5ExpertsPath: deriveMt5ExpertsPath(executable),
-    mt5IncludePath: deriveMt5IncludePath(executable),
+    mt5DataPath: mt5DataPath?.trim() || null,
+    mt5DataRoot: layout.mt5DataRoot,
+    mt5ExpertsPath: layout.mt5ExpertsPath,
+    mt5IncludePath: layout.mt5IncludePath,
     connectionStatus: "Disconnected",
     linkStatus: "Not Linked",
     cacsmsEaRoot: resolveCacsmsEaRoot(),
@@ -109,7 +129,7 @@ export function createTerminalLinkFromMonitor(
     lastHeartbeatAt: null,
     healthScore: 72,
     riskLevel: "Watch",
-    autoLinkOnConnect: true,
+    autoLinkOnConnect: false,
     operatorManaged: false,
     isActive: false,
     driftFileCount: 0,

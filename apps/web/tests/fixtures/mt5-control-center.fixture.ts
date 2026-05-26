@@ -14,11 +14,11 @@ const ago = (seconds: number) => new Date(Date.now() - seconds * 1000).toISOStri
 export function createMt5Seed() {
   const brokers: Broker[] = [
     {
-      id: "broker-icm", brokerName: "IC Markets", brokerCode: "ICM", mt5ServerName: "ICMarketsSC-Live23", serverRegion: "London", connectionMode: "MT5 Gateway", status: "Healthy",
+      id: "broker-icm", brokerName: "IC Markets", brokerCode: "ICM", mt5ServerName: "ICMarketsSC-MT5", serverRegion: "New York (Equinix NY4)", connectionMode: "MT5 Terminal", status: "Healthy",
       averageLatencyMs: 42, averageSpread: 0.2, executionQualityScore: 96, dataFeedQualityScore: 98, slippageRate: 0.7, requoteRate: 0.2, failedOrderRate: 0.1, uptimePercent: 99.98, loginHealth: "Healthy", lastIncident: null
     },
     {
-      id: "broker-pepper", brokerName: "Pepperstone", brokerCode: "PEP", mt5ServerName: "Pepperstone-Edge04", serverRegion: "New York", connectionMode: "FIX / MT5 Bridge", status: "Warning",
+      id: "broker-pepper", brokerName: "Pepperstone", brokerCode: "PEP", mt5ServerName: "Pepperstone-MT5-Live01", serverRegion: "London (Equinix LD4)", connectionMode: "MT5 Terminal", status: "Warning",
       averageLatencyMs: 287, averageSpread: 0.5, executionQualityScore: 74, dataFeedQualityScore: 89, slippageRate: 5.2, requoteRate: 2.1, failedOrderRate: 1.4, uptimePercent: 98.62, loginHealth: "Healthy", lastIncident: "Latency degradation at LD4 cross-connect"
     },
     {
@@ -27,8 +27,8 @@ export function createMt5Seed() {
     }
   ];
   const terminals: Terminal[] = [
-    { id: "term-ld4-01", terminalUuid: "mt5-ld4-0001", terminalName: "Execution Primary", brokerId: "broker-icm", brokerName: "IC Markets", serverName: "ICMarketsSC-Live23", accountLogin: "73018421", accountType: "Live", terminalVersion: "5.00 build 4770", hostMachine: "VPS-LD4-01", status: "Healthy", cpuUsage: 21, memoryUsage: 44, diskUsage: 36, latencyMs: 42, uptimeSeconds: 2_391_020, lastHeartbeatAt: ago(2), autoRestartEnabled: true, tradingEnabled: true },
-    { id: "term-ny4-02", terminalUuid: "mt5-ny4-0002", terminalName: "Execution Failover", brokerId: "broker-pepper", brokerName: "Pepperstone", serverName: "Pepperstone-Edge04", accountLogin: "54290016", accountType: "Live", terminalVersion: "5.00 build 4770", hostMachine: "VPS-NY4-02", status: "Warning", cpuUsage: 57, memoryUsage: 71, diskUsage: 49, latencyMs: 287, uptimeSeconds: 604_921, lastHeartbeatAt: ago(10), autoRestartEnabled: true, tradingEnabled: true },
+    { id: "term-ld4-01", terminalUuid: "mt5-ld4-0001", terminalName: "Execution Primary", brokerId: "broker-icm", brokerName: "IC Markets", serverName: "ICMarketsSC-MT5", accountLogin: "73018421", accountType: "Live", terminalVersion: "5.00 build 4770", hostMachine: "VPS-LD4-01", status: "Healthy", cpuUsage: 21, memoryUsage: 44, diskUsage: 36, latencyMs: 42, uptimeSeconds: 2_391_020, lastHeartbeatAt: ago(2), autoRestartEnabled: true, tradingEnabled: true },
+    { id: "term-ny4-02", terminalUuid: "mt5-ny4-0002", terminalName: "Execution Failover", brokerId: "broker-pepper", brokerName: "Pepperstone", serverName: "Pepperstone-MT5-Live01", accountLogin: "54290016", accountType: "Live", terminalVersion: "5.00 build 4770", hostMachine: "VPS-NY4-02", status: "Warning", cpuUsage: 57, memoryUsage: 71, diskUsage: 49, latencyMs: 287, uptimeSeconds: 604_921, lastHeartbeatAt: ago(10), autoRestartEnabled: true, tradingEnabled: true },
     { id: "term-fra-03", terminalUuid: "mt5-fra-0003", terminalName: "Prop Evaluation", brokerId: "broker-ftmo", brokerName: "FTMO", serverName: "FTMO-Server3", accountLogin: "88731690", accountType: "Prop Firm", terminalVersion: "5.00 build 4755", hostMachine: "VPS-FRA-03", status: "Critical", cpuUsage: 92, memoryUsage: 89, diskUsage: 77, latencyMs: 510, uptimeSeconds: 612, lastHeartbeatAt: ago(73), autoRestartEnabled: true, tradingEnabled: false }
   ];
   const accounts: Account[] = [

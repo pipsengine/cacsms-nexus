@@ -37,7 +37,31 @@ type ModuleEntry = {
 
 const moduleRegistry = new Map<Mt5ModuleKey, ModuleEntry>();
 const persistTimers = new Map<Mt5ModuleKey, ReturnType<typeof setTimeout>>();
+const hydratePromises = new Map<Mt5ModuleKey, Promise<void>>();
 let schemaReady: Promise<void> | null = null;
+
+declare global {
+  var __cacsmsMt5DevStates: Partial<Record<Mt5ModuleKey, object>> | undefined;
+}
+
+function resolveModuleSeed<T extends object>(moduleKey: Mt5ModuleKey, createSeed: () => T): T {
+  if (shouldUseDatabase() || process.env.NODE_ENV === "production") {
+    return createSeed();
+  }
+
+  if (!globalThis.__cacsmsMt5DevStates) {
+    globalThis.__cacsmsMt5DevStates = {};
+  }
+
+  const cached = globalThis.__cacsmsMt5DevStates[moduleKey] as T | undefined;
+  if (cached) {
+    return cached;
+  }
+
+  const seeded = createSeed();
+  globalThis.__cacsmsMt5DevStates[moduleKey] = seeded;
+  return seeded;
+}
 
 const MUTATING_ARRAY_METHODS = new Set([
   "copyWithin",
@@ -77,7 +101,10 @@ async function ensureSchema() {
 function serializeState(state: object) {
   return JSON.stringify(state, (_key, value) => {
     if (value instanceof Set) {
-      return { __cacsmsSet: true, values: [...value] };
+      return { __cacsmsSet: true, values: Array.from(value) };
+    }
+    if (value && typeof value === "object" && (value as Record<string, unknown>).__cacsmsSet === true) {
+      return value;
     }
     return value;
   });
@@ -145,6 +172,7 @@ function applyHydratedState(target: Record<string, unknown>, source: Record<stri
       typeof sourceValue === "object" &&
       !Array.isArray(sourceValue) &&
       !(sourceValue instanceof Set) &&
+      !("__cacsmsSet" in (sourceValue as Record<string, unknown>)) &&
       targetValue &&
       typeof targetValue === "object" &&
       !Array.isArray(targetValue) &&
@@ -179,6 +207,29 @@ function schedulePersist(moduleKey: Mt5ModuleKey, state: object) {
   );
 }
 
+const TRACKED_SET = Symbol("cacsmsTrackedSet");
+
+function trackSet<T>(moduleKey: Mt5ModuleKey, rootState: object, set: Set<T>): Set<T> {
+  const marker = set as Set<T> & { [TRACKED_SET]?: boolean };
+  if (marker[TRACKED_SET]) {
+    return set;
+  }
+  marker[TRACKED_SET] = true;
+
+  const wrap =
+    <Args extends unknown[], Result>(method: (...args: Args) => Result) =>
+    (...args: Args) => {
+      const result = method(...args);
+      schedulePersist(moduleKey, rootState);
+      return result;
+    };
+
+  set.add = wrap(set.add.bind(set));
+  set.delete = wrap(set.delete.bind(set));
+  set.clear = wrap(set.clear.bind(set));
+  return set;
+}
+
 function trackValue(moduleKey: Mt5ModuleKey, rootState: object, value: unknown, seen: WeakSet<object>): unknown {
   if (!value || typeof value !== "object") {
     return value;
@@ -188,6 +239,10 @@ function trackValue(moduleKey: Mt5ModuleKey, rootState: object, value: unknown, 
     return value;
   }
   seen.add(value);
+
+  if (value instanceof Set) {
+    return trackSet(moduleKey, rootState, value);
+  }
 
   if (Array.isArray(value)) {
     return new Proxy(value, {
@@ -233,20 +288,17 @@ function trackValue(moduleKey: Mt5ModuleKey, rootState: object, value: unknown, 
 
 function registerModuleState(moduleKey: Mt5ModuleKey, state: object) {
   if (!shouldUseDatabase()) {
-    return;
+    return state;
   }
 
-  trackValue(moduleKey, state, state, new WeakSet());
-  moduleRegistry.set(moduleKey, { state, hydrated: false });
+  const tracked = trackValue(moduleKey, state, state, new WeakSet()) as object;
+  moduleRegistry.set(moduleKey, { state: tracked, hydrated: false });
+  return tracked;
 }
 
 export function bindPersistedMt5State<T extends object>(moduleKey: Mt5ModuleKey, createSeed: () => T): T {
-  const state = createSeed();
-  registerModuleState(moduleKey, state);
-  if (shouldUseDatabase()) {
-    void ensureMt5ModuleHydrated(moduleKey);
-  }
-  return state;
+  const state = resolveModuleSeed(moduleKey, createSeed);
+  return registerModuleState(moduleKey, state) as T;
 }
 
 export async function preloadMt5ModuleStates() {
@@ -262,24 +314,39 @@ export async function ensureMt5ModuleHydrated(moduleKey: Mt5ModuleKey) {
     return;
   }
 
-  if (!moduleRegistry.has(moduleKey)) {
-    await moduleImporters[moduleKey]();
-  }
-
-  const entry = moduleRegistry.get(moduleKey);
-  if (!entry || entry.hydrated) {
+  const inflight = hydratePromises.get(moduleKey);
+  if (inflight) {
+    await inflight;
     return;
   }
 
-  const loaded = await loadModuleState(moduleKey);
-  if (loaded) {
-    applyHydratedState(entry.state as Record<string, unknown>, loaded as Record<string, unknown>);
-    trackValue(moduleKey, entry.state, entry.state, new WeakSet());
-  } else {
-    await writeModuleState(moduleKey, entry.state);
-  }
+  const hydrate = (async () => {
+    if (!moduleRegistry.has(moduleKey)) {
+      await moduleImporters[moduleKey]();
+    }
 
-  entry.hydrated = true;
+    const entry = moduleRegistry.get(moduleKey);
+    if (!entry || entry.hydrated) {
+      return;
+    }
+
+    const loaded = await loadModuleState(moduleKey);
+    if (loaded) {
+      applyHydratedState(entry.state as Record<string, unknown>, loaded as Record<string, unknown>);
+      trackValue(moduleKey, entry.state, entry.state, new WeakSet());
+    } else {
+      await writeModuleState(moduleKey, entry.state);
+    }
+
+    entry.hydrated = true;
+  })();
+
+  hydratePromises.set(moduleKey, hydrate);
+  try {
+    await hydrate;
+  } finally {
+    hydratePromises.delete(moduleKey);
+  }
 }
 
 export async function ensureMt5ModulesHydrated(moduleKeys: Mt5ModuleKey[]) {
@@ -292,14 +359,14 @@ export async function flushMt5ModulePersistence() {
     return;
   }
 
+  for (const timer of persistTimers.values()) {
+    clearTimeout(timer);
+  }
+  persistTimers.clear();
+
   await Promise.all(
-    [...persistTimers.entries()].map(async ([moduleKey, timer]) => {
-      clearTimeout(timer);
-      persistTimers.delete(moduleKey);
-      const entry = moduleRegistry.get(moduleKey);
-      if (entry) {
-        await writeModuleState(moduleKey, entry.state);
-      }
+    [...moduleRegistry.entries()].map(async ([moduleKey, entry]) => {
+      await writeModuleState(moduleKey, entry.state);
     })
   );
 }

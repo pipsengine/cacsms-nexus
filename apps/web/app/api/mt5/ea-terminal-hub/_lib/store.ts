@@ -30,8 +30,10 @@ import {
   mergeTerminalLiveState,
   syncTerminalProfilesFromInfrastructure
 } from "./integrations";
-import { copyAllLinkedEaArtifacts, copyLinkedEaFiles, previewLinkedEaSync, scanCacsmsEaFolder, scanMt5ExpertsFolder, validateTerminalExecutable } from "./fs";
-import { deriveMt5DataRoot, deriveMt5ExpertsPath, deriveMt5IncludePath, resolveCacsmsEaRoot } from "./paths";
+import { copyAllLinkedEaArtifacts, copyLinkedEaFiles, filterDeployableEaArtifacts, previewLinkedEaSync, removeDeprecatedExpertArtifacts, scanCacsmsEaFolder, scanMt5ExpertsFolder, validateTerminalExecutable } from "./fs";
+import { updateTerminalMonitorPaths } from "../../terminal-status/_lib/store";
+import { deriveMt5IncludePathFromExperts, resolveCacsmsEaRoot, assertWritableMt5Target, resolveMt5FolderLayout } from "./paths";
+import path from "node:path";
 
 const seed = createEaTerminalHubSeed();
 
@@ -230,6 +232,11 @@ export async function scanFolders(role: Mt5Role, request?: Request) {
   return { ok: true, message: "System and MT5 EA folders scanned.", summary: buildSummary() } satisfies ActionResponse;
 }
 
+function canSafelyAutoLink(terminal: Mt5TerminalLink) {
+  if (terminal.mt5DataPath?.trim()) return true;
+  return !/\\Program Files( \(x86\))?\\/i.test(path.resolve(terminal.mt5ExpertsPath));
+}
+
 export async function connectTerminals(payload: ConnectTerminalsRequest, role: Mt5Role, request?: Request) {
   authorize(role, "connect");
   confirm(payload.confirmed);
@@ -249,8 +256,15 @@ export async function connectTerminals(payload: ConnectTerminalsRequest, role: M
       terminal.notes = "Terminal executable path could not be validated on this host. Bridge connectivity will still be tracked remotely.";
     }
 
-    if (payload.autoLink ?? terminal.autoLinkOnConnect) {
-      await linkTerminalFolder({ terminalId, confirmed: true }, role, request, terminal);
+    if ((payload.autoLink ?? terminal.autoLinkOnConnect) && canSafelyAutoLink(terminal)) {
+      await linkTerminalFolder(
+        { terminalId, confirmed: true, mt5DataPath: terminal.mt5DataPath ?? undefined },
+        role,
+        request,
+        terminal
+      );
+    } else if (payload.autoLink ?? terminal.autoLinkOnConnect) {
+      terminal.notes = "Auto-link skipped. Set the MT5 AppData data path via Link EA before syncing files.";
     }
 
     mergeTerminalLiveState(terminal);
@@ -302,6 +316,19 @@ export function disconnectTerminals(terminalIds: string[], role: Mt5Role, confir
   } satisfies ActionResponse;
 }
 
+function applyMt5FolderLayout(terminal: Mt5TerminalLink, mt5DataPath?: string | null) {
+  if (mt5DataPath?.trim()) {
+    terminal.mt5DataPath = mt5DataPath.trim();
+  }
+  const layout = resolveMt5FolderLayout({
+    terminalExecutablePath: terminal.terminalExecutablePath,
+    mt5DataPath: terminal.mt5DataPath
+  });
+  terminal.mt5DataRoot = layout.mt5DataRoot;
+  terminal.mt5ExpertsPath = layout.mt5ExpertsPath;
+  terminal.mt5IncludePath = layout.mt5IncludePath;
+}
+
 export async function linkTerminalFolder(
   payload: LinkFolderRequest,
   role: Mt5Role,
@@ -311,28 +338,33 @@ export async function linkTerminalFolder(
   authorize(role, "link");
   confirm(payload.confirmed);
   const terminal = existingTerminal ?? terminalById(payload.terminalId);
-  const system = state.systemFolder ?? (await refreshSystemFolder());
-  terminal.mt5ExpertsPath = deriveMt5ExpertsPath(terminal.terminalExecutablePath);
-  terminal.mt5DataRoot = deriveMt5DataRoot(terminal.terminalExecutablePath);
-  terminal.mt5IncludePath = deriveMt5IncludePath(terminal.terminalExecutablePath);
+  const system = await refreshSystemFolder();
+  applyMt5FolderLayout(terminal, payload.mt5DataPath);
+  assertWritableMt5Target(terminal.mt5ExpertsPath);
 
+  const deployable = filterDeployableEaArtifacts(system.files);
   const relativePaths = payload.relativePaths?.length
     ? payload.relativePaths
     : payload.fileNames?.length
       ? payload.fileNames
-      : system.files.map((file) => file.relativePath);
+      : deployable.map((file) => file.relativePath);
 
   const copied = relativePaths.length ? await copyLinkedEaFiles(terminal.mt5ExpertsPath, relativePaths) : await copyAllLinkedEaArtifacts(terminal.mt5ExpertsPath, system.files);
+  if (!copied.includes("NexusBridgeEA/NexusBridgeEA.mq5")) {
+    throw new Error("EA link did not deploy NexusBridgeEA/NexusBridgeEA.mq5. Scan the system EA folder and link again with the MT5 AppData data path.");
+  }
+  const removedLegacy = await removeDeprecatedExpertArtifacts(terminal.mt5ExpertsPath);
+  updateTerminalMonitorPaths(terminal.terminalId, terminal.mt5DataRoot, terminal.terminalExecutablePath);
   terminal.linkedAt = new Date().toISOString();
   await refreshTerminalLink(terminal);
   if (state.activeTerminalId === terminal.terminalId) {
     await refreshAllDrift(terminal.terminalId);
   }
-  audit(role, "EA folder linked", terminal.terminalId, null, { copied, path: terminal.mt5ExpertsPath }, request);
+  audit(role, "EA folder linked", terminal.terminalId, null, { copied, removedLegacy, path: terminal.mt5ExpertsPath }, request);
   state.lastUpdatedAt = new Date().toISOString();
   return {
     ok: true,
-    message: `Linked ${copied.length} EA artifact(s) to ${terminal.terminalName}.`,
+    message: `Linked ${copied.length} EA artifact(s) to ${terminal.terminalName}. Open MT5 → File → Open Data Folder → MQL5\\Experts\\NexusBridgeEA to verify.${removedLegacy.length ? ` Removed legacy flat file(s): ${removedLegacy.join(", ")}.` : ""}`,
     terminal: mergeTerminalLiveState(terminal),
     copiedFiles: copied,
     summary: buildSummary()
@@ -385,6 +417,7 @@ export function registerTerminal(
   payload: {
     terminalName: string;
     terminalExecutablePath: string;
+    mt5DataPath?: string;
     brokerName: string;
     accountLogin: string;
     hostMachine: string;
@@ -408,7 +441,8 @@ export function registerTerminal(
     payload.accountLogin.trim(),
     payload.hostMachine.trim(),
     payload.region.trim(),
-    payload.terminalExecutablePath.trim()
+    payload.terminalExecutablePath.trim(),
+    payload.mt5DataPath?.trim() || null
   );
   terminal.notes = "Custom terminal profile registered from EA & Terminal Hub.";
   state.terminals.unshift(terminal);
@@ -422,7 +456,18 @@ export function registerTerminal(
   } satisfies ActionResponse;
 }
 
-export function provisionEaTerminalHubFromOnboarding(input: { terminal: Terminal; terminalPath?: string; eaInstanceId?: string }, role: Mt5Role, request?: Request) {
+export function removeTerminalHubLink(terminalId: string) {
+  const normalized = terminalId.trim();
+  if (!normalized) return 0;
+  const before = state.terminals.length;
+  state.terminals = state.terminals.filter((terminal) => terminal.terminalId !== normalized);
+  if (state.activeTerminalId === normalized) {
+    state.activeTerminalId = state.terminals[0]?.terminalId ?? null;
+  }
+  return before - state.terminals.length;
+}
+
+export function provisionEaTerminalHubFromOnboarding(input: { terminal: Terminal; terminalPath?: string; mt5DataPath?: string; eaInstanceId?: string }, role: Mt5Role, request?: Request) {
   authorize(role, "register");
   if (state.terminals.some((terminal) => terminal.terminalId === input.terminal.id)) {
     return terminalById(input.terminal.id);
@@ -435,7 +480,8 @@ export function provisionEaTerminalHubFromOnboarding(input: { terminal: Terminal
     input.terminal.accountLogin,
     input.terminal.hostMachine,
     input.terminal.region ?? "Unassigned",
-    input.terminalPath ?? "Pending terminal installation"
+    input.terminalPath ?? "Pending terminal installation",
+    input.mt5DataPath ?? null
   );
   terminal.eaInstanceId = input.eaInstanceId ?? null;
   terminal.bridgeChannelId = input.eaInstanceId ?? null;

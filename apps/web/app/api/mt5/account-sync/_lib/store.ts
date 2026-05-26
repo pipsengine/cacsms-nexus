@@ -1,7 +1,7 @@
 import type { AuditRecord, Mt5Role } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/types/mt5-control-center.types";
 import { calculateAccountSyncHealth, calculateExposureRisk, classifyReconciliation, recoveryWorkflow, validateTradingReadiness } from "@/modules/mt5-infrastructure-and-broker-connectivity/account-sync/algorithms/account-sync.algorithms";
 import { createAccountSyncSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/account-sync/data/account-sync.mock";
-import type { AccountReconciliation, AccountSyncLog, AccountSyncResponse, SyncedAccount } from "@/modules/mt5-infrastructure-and-broker-connectivity/account-sync/types/account-sync.types";
+import type { TerminalPendingOrderUpdatePayload, TerminalPositionUpdatePayload } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-bridge/types/ea-bridge.types";
 import { resolveMt5Role } from "../../_lib/access";
 import { bindPersistedMt5State } from "../../_lib/persistence";
 
@@ -68,6 +68,21 @@ function refreshAccount(account: SyncedAccount) {
 }
 
 export function accounts() { return state.accounts.map(refreshAccount); }
+
+export function removeAccountBindingByLogin(accountLogin: string) {
+  const normalized = accountLogin.trim();
+  if (!normalized) return 0;
+  const accountIds = state.accounts.filter((item) => item.accountLogin === normalized).map((item) => item.id);
+  if (!accountIds.length) return 0;
+  const accountIdSet = new Set(accountIds);
+  state.accounts = state.accounts.filter((item) => item.accountLogin !== normalized);
+  state.reconciliations = state.reconciliations.filter((item) => !accountIdSet.has(item.accountId));
+  state.positions = state.positions.filter((item) => !accountIdSet.has(item.accountId));
+  state.orders = state.orders.filter((item) => !accountIdSet.has(item.accountId));
+  state.exposures = state.exposures.filter((item) => !accountIdSet.has(item.accountId));
+  return accountIds.length;
+}
+
 export function account(id: string) { return refreshAccount(accountById(id)); }
 export function positions(id?: string) { return id ? state.positions.filter((item) => item.accountId === id) : state.positions; }
 export function orders(id?: string) { return id ? state.orders.filter((item) => item.accountId === id) : state.orders; }
@@ -297,4 +312,86 @@ export function ingestTerminalAccountSnapshot(input: {
   log(item, "Snapshot", comparison.status === "Matched" ? "Successful" : "Failed", comparison.action, comparison.status === "Matched" ? undefined : `Terminal reconciliation: ${comparison.status}`);
   audit("Infrastructure Admin", "Terminal account snapshot ingested", item.id, old, { balance: item.balance, equity: item.equity, reconciliationStatus: comparison.status });
   return { account: refreshAccount(item), reconciliation: record };
+}
+
+function normalizeSymbol(symbol: string) {
+  return symbol.replace(/(\.(raw|pro|m|ecn|i|c|zero|micro|mini|std|pro\.|ecn\.|raw\.|m\.|i\.|c\.|zero\.|micro\.|mini\.|std\.))$/i, "").replace(/[^A-Za-z0-9]/g, "");
+}
+
+export function ingestTerminalPositionUpdates(input: TerminalPositionUpdatePayload) {
+  const item = state.accounts.find((candidate) => candidate.accountLogin === input.accountLogin);
+  if (!item) throw new Error("Terminal position update is not bound to a registered Nexus account.");
+  const record = reconciliationByAccount(item.id);
+  const now = new Date().toISOString();
+  state.positions = state.positions.filter((position) => position.accountLogin !== input.accountLogin);
+  for (const position of input.positions) {
+    state.positions.unshift({
+      id: `pos-${item.id}-${position.positionTicket}`,
+      accountId: item.id,
+      accountLogin: item.accountLogin,
+      brokerId: item.brokerId,
+      terminalId: item.terminalId,
+      positionTicket: position.positionTicket,
+      symbol: position.symbol,
+      normalizedSymbol: normalizeSymbol(position.symbol),
+      direction: position.direction,
+      volume: position.volume,
+      entryPrice: position.entryPrice,
+      currentPrice: position.currentPrice,
+      stopLoss: position.stopLoss,
+      takeProfit: position.takeProfit,
+      profitLoss: position.profitLoss,
+      swap: position.swap,
+      commission: position.commission,
+      openTime: position.openTime,
+      syncStatus: "Healthy",
+      lastSyncAt: now
+    });
+  }
+  item.openPositionsCount = input.positions.length;
+  record.mt5PositionCount = input.positions.length;
+  record.positionCountDifference = input.positions.length - record.nexusPositionCount;
+  item.lastSyncAt = now;
+  item.lastSuccessfulSyncAt = now;
+  log(item, "Position Sync", "Successful", `Synchronized ${input.positions.length} open position(s) from MT5 terminal.`);
+  audit("Infrastructure Admin", "Terminal position update ingested", item.id, null, { count: input.positions.length });
+  return { account: refreshAccount(item), positions: input.positions.length };
+}
+
+export function ingestTerminalPendingOrderUpdates(input: TerminalPendingOrderUpdatePayload) {
+  const item = state.accounts.find((candidate) => candidate.accountLogin === input.accountLogin);
+  if (!item) throw new Error("Terminal pending order update is not bound to a registered Nexus account.");
+  const record = reconciliationByAccount(item.id);
+  const now = new Date().toISOString();
+  state.orders = state.orders.filter((order) => order.accountLogin !== input.accountLogin);
+  for (const order of input.orders) {
+    state.orders.unshift({
+      id: `ord-${item.id}-${order.orderTicket}`,
+      accountId: item.id,
+      accountLogin: item.accountLogin,
+      brokerId: item.brokerId,
+      terminalId: item.terminalId,
+      orderTicket: order.orderTicket,
+      symbol: order.symbol,
+      normalizedSymbol: normalizeSymbol(order.symbol),
+      orderType: order.orderType,
+      direction: order.direction,
+      volume: order.volume,
+      price: order.price,
+      stopLoss: order.stopLoss,
+      takeProfit: order.takeProfit,
+      expiryTime: order.expiryTime ?? "",
+      orderStatus: "Pending",
+      syncStatus: "Healthy",
+      lastSyncAt: now
+    });
+  }
+  item.pendingOrdersCount = input.orders.length;
+  record.mt5PendingOrderCount = input.orders.length;
+  record.pendingOrderCountDifference = input.orders.length - record.nexusPendingOrderCount;
+  item.lastSyncAt = now;
+  item.lastSuccessfulSyncAt = now;
+  log(item, "Order Sync", "Successful", `Synchronized ${input.orders.length} pending order(s) from MT5 terminal.`);
+  audit("Infrastructure Admin", "Terminal pending order update ingested", item.id, null, { count: input.orders.length });
+  return { account: refreshAccount(item), orders: input.orders.length };
 }

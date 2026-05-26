@@ -45,6 +45,56 @@ export type TerminalExecutionFeedbackPayload = {
   rejectionReason?: string;
 };
 
+export type TerminalPositionRecord = {
+  positionTicket: string;
+  symbol: string;
+  direction: "Buy" | "Sell";
+  volume: number;
+  entryPrice: number;
+  currentPrice: number;
+  stopLoss: number;
+  takeProfit: number;
+  profitLoss: number;
+  swap: number;
+  commission: number;
+  openTime: string;
+};
+
+export type TerminalPositionUpdatePayload = {
+  schemaVersion: "1.0";
+  accountLogin: string;
+  positions: TerminalPositionRecord[];
+};
+
+export type TerminalPendingOrderRecord = {
+  orderTicket: string;
+  symbol: string;
+  orderType: string;
+  direction: "Buy" | "Sell";
+  volume: number;
+  price: number;
+  stopLoss: number;
+  takeProfit: number;
+  createdTime: string;
+  expiryTime?: string;
+};
+
+export type TerminalPendingOrderUpdatePayload = {
+  schemaVersion: "1.0";
+  accountLogin: string;
+  orders: TerminalPendingOrderRecord[];
+};
+
+export type EaPairingReceipt = {
+  eaInstanceId: string;
+  terminalName: string;
+  accountLogin: string;
+  ingestionToken: string;
+  signingSecret: string;
+  nexusBaseUrl: string;
+  state: "Reissued Pairing Credentials";
+};
+
 export type EaInstance = {
   id: string;
   eaInstanceUuid: string;
@@ -206,6 +256,7 @@ export type EaBridgeResponse = {
     canDiagnostics: boolean;
     canRestart: boolean;
     canRotateToken: boolean;
+    canReissuePairing: boolean;
     canTradeControl: boolean;
     canRebindTerminal: boolean;
     canEmergencyDisable: boolean;

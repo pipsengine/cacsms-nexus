@@ -96,11 +96,38 @@ function addEvent(terminal: TerminalStatusRecord, eventType: string, severity: T
 }
 
 export function terminalRecords() { return records(); }
+
+export function removeTerminalMonitorByUuid(terminalUuid: string) {
+  const normalized = terminalUuid.trim().toUpperCase();
+  if (!normalized) return 0;
+  const removedIds = new Set<string>();
+  const before = state.terminals.length;
+  state.terminals = state.terminals.filter((terminal) => {
+    const matches = terminal.terminalUuid === normalized || terminal.terminalId === normalized || terminal.id === `status-${normalized}`;
+    if (matches) removedIds.add(terminal.terminalId);
+    return !matches;
+  });
+  if (!removedIds.size) return 0;
+  state.events = state.events.filter((event) => !removedIds.has(event.terminalId));
+  state.errors = state.errors.filter((error) => !removedIds.has(error.terminalId));
+  state.heartbeatLogs = state.heartbeatLogs.filter((heartbeat) => !removedIds.has(heartbeat.terminalId));
+  return before - state.terminals.length;
+}
+
 export function terminalRecord(terminalId: string) { return refreshedTerminal(terminalById(terminalId)); }
 export function terminalLogs(terminalId?: string) { return terminalId ? state.errors.filter((error) => error.terminalId === terminalId) : state.errors; }
 export function terminalEvents(terminalId?: string) { return terminalId ? state.events.filter((event) => event.terminalId === terminalId) : state.events; }
 export function terminalHeartbeats(terminalId: string) { return state.heartbeatLogs.filter((heartbeat) => heartbeat.terminalId === terminalId); }
 export function terminalAudits() { return state.audits; }
+
+export function updateTerminalMonitorPaths(terminalId: string, mt5DataPath: string, terminalPath?: string) {
+  const terminal = state.terminals.find((item) => item.terminalId === terminalId);
+  if (!terminal) return null;
+  terminal.mt5DataPath = mt5DataPath;
+  if (terminalPath) terminal.terminalPath = terminalPath;
+  terminal.updatedAt = new Date().toISOString();
+  return terminal;
+}
 
 export function provisionTerminalMonitor(input: {
   terminal: Terminal;
@@ -111,6 +138,7 @@ export function provisionTerminalMonitor(input: {
   region?: string;
   timezone?: string;
   terminalPath?: string;
+  mt5DataPath?: string;
 }, role: Mt5Role, request?: Request) {
   if (!["Super Admin", "Infrastructure Admin"].includes(role)) throw new Error(`Role "${role}" is not authorized to provision terminal monitor.`);
   if (state.terminals.some((terminal) => terminal.terminalId === input.terminal.id || terminal.terminalUuid === input.terminal.terminalUuid)) {
@@ -122,7 +150,8 @@ export function provisionTerminalMonitor(input: {
     brokerId: input.terminal.brokerId, brokerName: input.terminal.brokerName, accountId: input.accountId, accountLogin: input.terminal.accountLogin,
     accountType: input.terminal.accountType, accountCurrency: input.currency, serverName: input.terminal.serverName, hostMachine: input.terminal.hostMachine,
     ipAddress: input.ipAddress ?? "Pending verification", operatingSystem: input.operatingSystem ?? "Unknown", region: input.region ?? "Unassigned",
-    timezone: input.timezone ?? "UTC", terminalPath: input.terminalPath ?? "Pending terminal installation", terminalVersion: input.terminal.terminalVersion,
+    timezone: input.timezone ?? "UTC", terminalPath: input.terminalPath ?? "Pending terminal installation",
+    mt5DataPath: input.mt5DataPath?.trim() || null, terminalVersion: input.terminal.terminalVersion,
     buildNumber: 0, processStatus: "Stopped", processId: null, startupTime: now, connectionStatus: "Syncing", heartbeatStatus: "Syncing",
     lastHeartbeatAt: now, expectedHeartbeatIntervalSeconds: 15, heartbeatDelaySeconds: 0, missedHeartbeatCount: 0, cpuUsagePercent: 0,
     memoryUsagePercent: 0, diskUsagePercent: 0, networkLatencyMs: 0, packetLossPercent: 0, logFileSizeMb: 0, dataFolderSizeMb: 0,

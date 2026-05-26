@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest"
+    "test": "vitest",
+    "reset-mt5-state": "node scripts/reset-mt5-state.mjs"
   },
   "dependencies": {
     "@cacsms-nexus/design-system": "workspace:*",

@@ -7,7 +7,7 @@ import path from "node:path";
 import type { EaFolderFile, SyncPreviewItem } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-terminal-hub/types/ea-terminal-hub.types";
 import { buildSyncPreview } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-terminal-hub/algorithms/ea-terminal-hub.algorithms";
 
-import { deriveMt5IncludePathFromExperts, resolveCacsmsEaRoot, resolveRepoBridgeEaSourceCandidates, toPosixRelative } from "./paths";
+import { deriveMt5IncludePathFromExperts, resolveCacsmsEaRoot, resolveRepoBridgeEaSourceCandidates, toPosixRelative, assertWritableMt5Target } from "./paths";
 
 const EA_EXTENSIONS = new Set([".mq5", ".mq4", ".ex5", ".ex4", ".mqh"]);
 const MAX_HASH_BYTES = 8 * 1024 * 1024;
@@ -59,7 +59,18 @@ async function walkEaFiles(root: string, relative = ""): Promise<EaFolderFile[]>
 }
 
 async function ensureDirectoryTree(target: string) {
-  await fs.mkdir(target, { recursive: true });
+  assertWritableMt5Target(target);
+  try {
+    await fs.mkdir(target, { recursive: true });
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? String((error as NodeJS.ErrnoException).code) : "";
+    if (code === "EPERM" || code === "EACCES") {
+      throw new Error(
+        `Permission denied writing to ${target}. In MT5 use File → Open Data Folder and register that AppData path as the MT5 data path, then link again.`
+      );
+    }
+    throw error;
+  }
 }
 
 export async function validateTerminalExecutable(terminalExecutablePath: string) {
@@ -72,7 +83,7 @@ export async function validateTerminalExecutable(terminalExecutablePath: string)
 }
 
 export async function ensureNexusBridgeEaBootstrap() {
-  const expertsDir = path.join(resolveCacsmsEaRoot(), "Experts");
+  const expertsDir = path.join(resolveCacsmsEaRoot(), "Experts", "NexusBridgeEA");
   await ensureDirectoryTree(expertsDir);
   const target = path.join(expertsDir, "NexusBridgeEA.mq5");
   if (await pathExists(target)) return false;
@@ -84,6 +95,35 @@ export async function ensureNexusBridgeEaBootstrap() {
 
   await fs.copyFile(source, target);
   return true;
+}
+
+const DEPRECATED_EXPERT_ARTIFACTS = ["NexusBridgeEA.mq5", "NexusBridgeEA.ex5"];
+const NEXUS_BRIDGE_FOLDER_PREFIX = "NexusBridgeEA/";
+const NEXUS_BRIDGE_MAIN_FILE = "NexusBridgeEA/NexusBridgeEA.mq5";
+
+export function filterDeployableEaArtifacts(files: EaFolderFile[]) {
+  return files.filter((file) => {
+    if (file.relativePath.startsWith(NEXUS_BRIDGE_FOLDER_PREFIX)) return true;
+    if (file.relativePath.startsWith("Include/")) return false;
+    if (file.relativePath === "NexusBridgeEA.mq5" || file.relativePath === "NexusBridgeEA.ex5") return false;
+    return true;
+  });
+}
+
+export async function removeDeprecatedExpertArtifacts(mt5ExpertsPath: string) {
+  const folderMain = path.join(mt5ExpertsPath, ...NEXUS_BRIDGE_MAIN_FILE.split("/"));
+  if (!(await pathExists(folderMain))) {
+    return [] as string[];
+  }
+
+  const removed: string[] = [];
+  for (const relativePath of DEPRECATED_EXPERT_ARTIFACTS) {
+    const target = path.join(mt5ExpertsPath, relativePath);
+    if (!(await pathExists(target))) continue;
+    await fs.unlink(target);
+    removed.push(relativePath);
+  }
+  return removed;
 }
 
 export async function scanCacsmsEaFolder() {
@@ -189,6 +229,9 @@ export async function previewLinkedEaSync(targetExpertsPath: string, systemFiles
 }
 
 export async function copyAllLinkedEaArtifacts(targetExpertsPath: string, systemFiles: EaFolderFile[]) {
-  const relativePaths = systemFiles.map((file) => file.relativePath);
+  const relativePaths = filterDeployableEaArtifacts(systemFiles).map((file) => file.relativePath);
+  if (!relativePaths.includes(NEXUS_BRIDGE_MAIN_FILE)) {
+    throw new Error("NexusBridgeEA package is incomplete in the canonical EA folder. Expected Experts/NexusBridgeEA/NexusBridgeEA.mq5 with bundled Cacsms/*.mqh modules.");
+  }
   return copyLinkedEaFiles(targetExpertsPath, relativePaths);
 }

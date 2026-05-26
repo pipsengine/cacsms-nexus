@@ -6,8 +6,8 @@
   "packageManager": "pnpm@9.15.4",
   "scripts": {
     "build": "turbo build",
-    "dev": "turbo dev",
-    "dev:all": "turbo dev",
+    "dev": "turbo dev --filter=@cacsms-nexus/web",
+    "dev:all": "turbo dev --filter=@cacsms-nexus/web",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
     "clean": "turbo clean"

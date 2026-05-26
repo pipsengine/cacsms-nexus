@@ -1,4 +1,4 @@
-import type { AuditRecord, Mt5Role } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/types/mt5-control-center.types";
+import type { AuditRecord, Broker, Mt5Role } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/types/mt5-control-center.types";
 import {
   calculateBrokerHealth,
   detectExecutionDegradation,
@@ -115,6 +115,62 @@ export function brokerSpreads() { return state.spreadLogs; }
 export function brokerExecutionQuality() { return state.executionQuality; }
 export function brokerDiagnostics() { return state.diagnostics; }
 export function brokerAudits() { return state.audits; }
+
+export function provisionBrokerConnectionFromRegistration(broker: Broker, role: Mt5Role, request?: Request) {
+  if (state.brokers.some((item) => item.id === broker.id)) {
+    return refreshBroker(brokerById(broker.id));
+  }
+  const now = new Date().toISOString();
+  const connection: BrokerConnection = {
+    id: broker.id,
+    brokerId: `BRK-${broker.brokerCode}`,
+    brokerName: broker.brokerName,
+    brokerCode: broker.brokerCode,
+    mt5ServerName: broker.mt5ServerName,
+    serverRegion: broker.serverRegion,
+    connectionMode: broker.connectionMode,
+    supportedAccountTypes: ["Standard"],
+    supportedInstruments: ["FX", "Metals", "Indices"],
+    timezone: "UTC",
+    tradingSessions: "24x5",
+    connectionStatus: "Syncing",
+    loginStatus: "Inactive",
+    dataFeedStatus: "Inactive",
+    executionStatus: "Inactive",
+    serverReachable: false,
+    loginSuccessRate: 0,
+    lastSuccessfulLoginAt: now,
+    failedLoginCount: 0,
+    averageLatencyMs: 0,
+    packetLossPercent: 0,
+    heartbeatDelaySeconds: 0,
+    uptimePercent: 0,
+    spreadStabilityScore: 0,
+    slippageScore: 0,
+    requoteRate: 0,
+    rejectionRate: 0,
+    fillQualityScore: 0,
+    averageExecutionTimeMs: 0,
+    executionEnabled: false,
+    lastRejectedOrderReason: null,
+    dataFeedActive: false,
+    lastTickAt: now,
+    tickDelaySeconds: 0,
+    candleSyncStatus: "Inactive",
+    frozenFeedStatus: "Inactive",
+    spreadWideningStatus: "Inactive",
+    missingDataGapCount: 0,
+    lastConnectedAt: now,
+    lastDisconnectedAt: null,
+    lastErrorMessage: null,
+    riskLevel: "Inactive",
+    healthScore: 0,
+    updatedAt: now
+  };
+  state.brokers.push(connection);
+  audit(role, "Broker connection profile provisioned", broker.id, null, { brokerName: broker.brokerName, mt5ServerName: broker.mt5ServerName }, request);
+  return refreshBroker(connection);
+}
 
 export function syncBrokerConnections(role: Mt5Role, confirmed: boolean, request?: Request) {
   authorize(role, "sync");

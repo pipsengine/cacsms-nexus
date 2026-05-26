@@ -14,7 +14,7 @@ vi.mock("@/modules/mt5-infrastructure-and-broker-connectivity/ea-terminal-hub/ho
           expertsPath: "C:\\Next-Generation\\cacsms-nexus\\services\\cacsms-ea\\Experts",
           includePath: "C:\\Next-Generation\\cacsms-nexus\\services\\cacsms-ea\\Include",
           exists: true,
-          files: [{ name: "NexusBridgeEA.mq5", relativePath: "NexusBridgeEA.mq5", extension: ".mq5", sizeBytes: 100, modifiedAt: new Date().toISOString(), contentHash: "abc" }],
+          files: [{ name: "NexusBridgeEA.mq5", relativePath: "NexusBridgeEA/NexusBridgeEA.mq5", extension: ".mq5", sizeBytes: 100, modifiedAt: new Date().toISOString(), contentHash: "abc" }],
           fileCount: 1,
           lastScannedAt: new Date().toISOString(),
           lastModifiedAt: null

@@ -23,6 +23,7 @@ export type TerminalStatusRecord = {
   region: string;
   timezone: string;
   terminalPath: string;
+  mt5DataPath?: string | null;
   terminalVersion: string;
   buildNumber: number;
   processStatus: "Running" | "Stopped" | "Unresponsive";

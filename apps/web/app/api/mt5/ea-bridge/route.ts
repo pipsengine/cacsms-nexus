@@ -1,6 +1,7 @@
 import { ok } from "../_lib/http";
 import { buildEaBridgeResponse, eaBridgeRole } from "./_lib/store";
+import { withEaBridgeStore } from "./_lib/handler";
 
-export function GET(request: Request) {
-  return ok(buildEaBridgeResponse(eaBridgeRole(request)));
+export async function GET(request: Request) {
+  return ok(await withEaBridgeStore(() => buildEaBridgeResponse(eaBridgeRole(request))));
 }

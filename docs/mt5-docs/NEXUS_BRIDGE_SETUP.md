@@ -34,7 +34,7 @@ A verified signed heartbeat activates terminal monitoring. The first signed acco
 ## Install In MT5
 
 1. Open MetaEditor from the target terminal.
-2. Place [NexusBridgeEA.mq5](../../mt5/expert-advisors/NexusBridgeEA.mq5) under the terminal's `MQL5/Experts` directory and compile it.
+2. Place `services/cacsms-ea/Experts/NexusBridgeEA/` under the terminal's `MQL5/Experts` directory (or sync via **EA & Terminal Hub**) and compile the EA.
 3. In MT5, open `Tools > Options > Expert Advisors`.
 4. Enable algorithmic trading for the EA as appropriate for telemetry, and add the Nexus origin under `Allow WebRequest for listed URL`, for example `http://localhost:3000` for local development or the production HTTPS origin.
 5. Attach the EA to a chart in the terminal that is logged into the intended broker account.
@@ -49,7 +49,17 @@ PollApprovedCommands = false
 EnableCommandExecution = false
 ```
 
-Keep `EnableCommandExecution=false`. The provided connector is for telemetry and controlled command delivery validation; it contains no live order-placement implementation.
+Keep `EnableCommandExecution=false` unless you have certified guarded order execution, risk approval, and emergency disable policies in place. When enabled, the EA supports **Market** and **Limit** commands with volume caps and symbol scope guards.
+
+## Modular Source (v2.1)
+
+Canonical EA sources live under `services/cacsms-ea/`:
+
+- `Experts/NexusBridgeEA/NexusBridgeEA.mq5`
+- `Experts/NexusBridgeEA/Cacsms/*.mqh` (bundled with the EA folder)
+- `Include/Cacsms/*.mqh` (crypto, HTTP, telemetry, commands)
+
+Deploy both Experts and Include into each MT5 terminal. Use **EA & Terminal Hub** to sync artifacts and detect Include drift.
 
 ## Implemented Terminal Endpoints
 
@@ -92,10 +102,9 @@ Nexus rejects a reused nonce, an envelope more than 60 seconds outside server ti
 
 ## Production Work Remaining
 
-The API contract, security boundary, terminal telemetry source, account snapshot handoff, and command delivery/feedback endpoints are implemented. Current page state stores are in memory and start from development seed data. Before live broker operation:
+The API contract, security boundary, modular EA v2.1 telemetry (heartbeat, snapshot, positions, orders), account sync reconciliation for position/order payloads, command poll, guarded execution scaffolding, and execution feedback are implemented. Before live broker operation:
 
 1. Replace in-memory EA Bridge and Account Sync stores with database repositories and durable audit storage.
 2. Replace temporary one-time onboarding credential issuance with managed secret vault storage and credential rotation policy.
-3. Add position and pending-order record reconciliation from terminal payloads, not only message intake.
-4. Implement and certify the guarded MT5 order execution module, including risk approval, idempotency, maximum volume/slippage controls, acknowledgement, and emergency disable enforcement.
-5. Deploy behind HTTPS, move secrets to managed storage, and stream live updates through durable WebSocket or SSE infrastructure.
+3. Certify guarded MT5 order execution under production risk policies (slippage, idempotency, emergency disable enforcement).
+4. Deploy behind HTTPS, move secrets to managed storage, and stream live updates through durable WebSocket or SSE infrastructure.

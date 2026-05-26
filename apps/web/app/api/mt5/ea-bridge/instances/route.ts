@@ -1,4 +1,7 @@
 import { ok } from "../../_lib/http";
+import { withEaBridgeStore } from "../_lib/handler";
 import { publicBridgeInstances } from "../_lib/store";
 
-export function GET() { return ok(publicBridgeInstances()); }
+export async function GET() {
+  return ok(await withEaBridgeStore(() => publicBridgeInstances()));
+}

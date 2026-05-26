@@ -50,7 +50,8 @@ export function EaTerminalHubDashboard() {
   const [syncPreview, setSyncPreview] = React.useState<SyncPreviewItem[]>([]);
   const [registerDraft, setRegisterDraft] = React.useState({
     terminalName: "",
-    terminalExecutablePath: "C:\\MT5\\Custom\\terminal64.exe",
+    terminalExecutablePath: "C:\\Program Files\\MetaTrader 5 IC Markets Global\\terminal64.exe",
+    mt5DataPath: "",
     brokerName: "",
     accountLogin: "",
     hostMachine: "LOCAL",
@@ -204,7 +205,7 @@ export function EaTerminalHubDashboard() {
                   </li>
                 ))}
                 {!data.summary.systemFolder.files?.length ? (
-                  <li className="py-3 text-slate-500">No EA artifacts detected yet. NexusBridgeEA.mq5 is bootstrapped automatically when available in the repo.</li>
+                  <li className="py-3 text-slate-500">No EA artifacts detected yet. NexusBridgeEA folder is bootstrapped automatically when available in the repo.</li>
                 ) : null}
               </ul>
             </ScrollArea>
@@ -270,7 +271,7 @@ export function EaTerminalHubDashboard() {
               <Button
                 size="sm"
                 disabled={!permissions?.canConnect || !ui.selectedTerminalIds.length || action.isPending}
-                onClick={() => command("Connect selected terminals", "connect", { terminalIds: ui.selectedTerminalIds, autoLink: true })}
+                onClick={() => command("Connect selected terminals", "connect", { terminalIds: ui.selectedTerminalIds, autoLink: false })}
               >
                 <PlugZap className="mr-2 h-4 w-4" />
                 Manage selected
@@ -318,8 +319,18 @@ export function EaTerminalHubDashboard() {
                   isPending={action.isPending}
                   onToggle={() => ui.toggleTerminalSelection(terminal.terminalId)}
                   onActivate={() => command("Set active terminal", "set-active", { terminalId: terminal.terminalId })}
-                  onConnect={() => command(`Manage ${terminal.terminalName}`, "connect", { terminalIds: [terminal.terminalId], autoLink: true })}
-                  onLink={() => command(`Link EA folder for ${terminal.terminalName}`, "link", { terminalId: terminal.terminalId })}
+                  onConnect={() => command(`Manage ${terminal.terminalName}`, "connect", { terminalIds: [terminal.terminalId], autoLink: false })}
+                  onLink={() => {
+                    const dataPath = window.prompt(
+                      "MT5 data folder from File → Open Data Folder in MetaTrader (required for broker installs in Program Files).",
+                      terminal.mt5DataPath ?? ""
+                    );
+                    if (dataPath === null) return;
+                    void command(`Link EA folder for ${terminal.terminalName}`, "link", {
+                      terminalId: terminal.terminalId,
+                      ...(dataPath.trim() ? { mt5DataPath: dataPath.trim() } : {})
+                    });
+                  }}
                   onPreview={() => command(`Preview sync for ${terminal.terminalName}`, "preview-sync", { terminalId: terminal.terminalId })}
                   onToggleAutoLink={(enabled) => command(`Update auto-link for ${terminal.terminalName}`, "toggle-auto-link", { terminalId: terminal.terminalId, enabled })}
                 />
@@ -437,7 +448,8 @@ export function EaTerminalHubDashboard() {
                     void command("Register terminal profile", "register-terminal", registerDraft).then(() => {
                       setRegisterDraft({
                         terminalName: "",
-                        terminalExecutablePath: "C:\\MT5\\Custom\\terminal64.exe",
+                        terminalExecutablePath: "C:\\Program Files\\MetaTrader 5 IC Markets Global\\terminal64.exe",
+                        mt5DataPath: "",
                         brokerName: "",
                         accountLogin: "",
                         hostMachine: "LOCAL",
@@ -485,7 +497,8 @@ export function EaTerminalHubDashboard() {
 
       <Separator />
       <p className="text-xs text-slate-500">
-        Configure `CACSMS_EA_ROOT` and optionally `CACSMS_REPO_ROOT` in `apps/web/.env.local` when paths differ on your host. Bridge connectivity requires NexusBridgeEA attached with onboarding credentials.
+        Broker MT5 installs keep writable files under AppData, not Program Files. In MT5 use <strong>File → Open Data Folder</strong> and paste that path into <strong>MT5 data path</strong> before linking.
+        Configure `CACSMS_EA_ROOT` in `apps/web/.env.local` when the canonical EA folder differs on your host.
       </p>
     </div>
   );

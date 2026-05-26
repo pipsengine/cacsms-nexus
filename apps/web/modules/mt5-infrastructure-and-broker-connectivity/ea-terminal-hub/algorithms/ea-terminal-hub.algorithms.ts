@@ -176,14 +176,27 @@ export function buildInstallChecklist(terminal: Mt5TerminalLink | null, systemFi
       detail: terminal.mt5ExpertsPath
     },
     {
+      step: "MT5 AppData data path registered",
+      status: terminal.mt5DataPath?.trim() ? "Complete" : "Attention",
+      detail: terminal.mt5DataPath?.trim()
+        ? terminal.mt5DataPath
+        : "Paste File → Open Data Folder from MT5 into Link EA so files sync to AppData, not Program Files."
+    },
+    {
       step: "EA folder linked to terminal",
       status: terminal.linkStatus === "Linked" ? "Complete" : terminal.linkStatus === "Drifted" ? "Attention" : "Pending",
       detail:
         terminal.linkStatus === "Linked"
-          ? "System and terminal Experts payloads are synchronized."
+          ? "System and terminal Experts payloads are synchronized. In Navigator expand Experts → NexusBridgeEA."
           : terminal.linkStatus === "Drifted"
             ? `${terminal.driftFileCount} drift item(s) require reconciliation.`
-            : "Run Link EA or Connect with auto-link enabled."
+            : "Run Link EA with the MT5 AppData data path."
+    },
+    {
+      step: "Attach EA with pairing credentials",
+      status: terminal.connectionStatus === "Connected" ? "Complete" : "Pending",
+      detail:
+        "Drag Experts/NexusBridgeEA/NexusBridgeEA onto a chart. Paste IngestionToken and SigningSecret from onboarding before OK. Empty inputs make MT5 remove the EA immediately."
     },
     {
       step: "Bridge instance provisioned",

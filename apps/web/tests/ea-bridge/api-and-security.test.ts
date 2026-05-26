@@ -14,6 +14,7 @@ import {
   publicBridgeInstance,
   queueTradeCommand,
   rotateBridgeToken,
+  reissueEaPairingCredentials,
   setBridgeTrading,
   signBridgeEnvelope
 } from "@/app/api/mt5/ea-bridge/_lib/store";
@@ -66,6 +67,13 @@ describe("EA bridge domain controls", () => {
     expect(eaBridgeRole(new Request("http://localhost/api/mt5/ea-bridge"))).toBe("Read-Only Viewer");
     expect(() => rotateBridgeToken("ea-ld4-01", "Read-Only Viewer", true)).toThrow(/not authorized/);
     expect(() => rotateBridgeToken("ea-ld4-01", "Infrastructure Admin", false)).toThrow(/Confirmation/);
+    expect(() => reissueEaPairingCredentials("ea-ld4-01", "Read-Only Viewer", true)).toThrow(/not authorized/);
+    expect(() => reissueEaPairingCredentials("ea-ld4-01", "Infrastructure Admin", false)).toThrow(/Confirmation/);
+    const receipt = reissueEaPairingCredentials("ea-ld4-01", "Infrastructure Admin", true, new Request("http://localhost:3000/api/mt5/ea-bridge/instances/ea-ld4-01/reissue-pairing"));
+    expect(receipt.ingestionToken).toBeTruthy();
+    expect(receipt.signingSecret).toBeTruthy();
+    expect(receipt.eaInstanceId).toBe("ea-ld4-01");
+    expect(bridgeAudits().some((record) => record.action === "EA pairing credentials reissued")).toBe(true);
     expect(() => setBridgeTrading("ea-ld4-01", false, "Read-Only Viewer", true)).toThrow(/not authorized/);
   });
 
@@ -160,6 +168,54 @@ describe("EA bridge domain controls", () => {
       expect(result.command.executionStatus).toBe("Executed");
       expect(result.command.deliveryStatus).toBe("Delivered");
       expect(pendingTradeCommands("ea-ld4-01", signedEnvelope("Command Poll", {}, `poll-after-${timestamp}`), request).commands.some((item) => item.commandUuid === command.commandUuid)).toBe(false);
+    });
+  });
+
+  it("ingests signed position and pending order updates into account sync", () => {
+    withTerminalCredentials((request) => {
+      const positions = signedEnvelope("Position Update", {
+        schemaVersion: "1.0",
+        accountLogin: "73018421",
+        positions: [
+          {
+            positionTicket: "9001001",
+            symbol: "EURUSD.raw",
+            direction: "Buy",
+            volume: 1.5,
+            entryPrice: 1.0842,
+            currentPrice: 1.0851,
+            stopLoss: 1.081,
+            takeProfit: 1.09,
+            profitLoss: 135,
+            swap: -2,
+            commission: -4,
+            openTime: new Date().toISOString()
+          }
+        ]
+      }, `positions-${Date.now()}`);
+      const positionResult = ingestSignedBridgeEvent(positions, "Position Update", request);
+      expect(positionResult.accountSync?.positions).toBe(1);
+
+      const orders = signedEnvelope("Pending Order Update", {
+        schemaVersion: "1.0",
+        accountLogin: "73018421",
+        orders: [
+          {
+            orderTicket: "9002001",
+            symbol: "GBPUSD.raw",
+            orderType: "Buy Limit",
+            direction: "Buy",
+            volume: 0.5,
+            price: 1.271,
+            stopLoss: 1.265,
+            takeProfit: 1.281,
+            createdTime: new Date().toISOString(),
+            expiryTime: new Date(Date.now() + 86_400_000).toISOString()
+          }
+        ]
+      }, `orders-${Date.now()}`);
+      const orderResult = ingestSignedBridgeEvent(orders, "Pending Order Update", request);
+      expect(orderResult.accountSync?.orders).toBe(1);
     });
   });
 
