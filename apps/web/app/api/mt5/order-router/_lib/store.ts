@@ -3,9 +3,16 @@ import { calculateRoutingHealth, duplicateProtection, evaluateRetrySafety, selec
 import { createOrderRouterSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/order-router/data/order-router.mock";
 import type { OrderRoute, RouterLog, RouterResponse } from "@/modules/mt5-infrastructure-and-broker-connectivity/order-router/types/order-router.types";
 import { resolveMt5Role } from "../../_lib/access";
+import { bindPersistedMt5State } from "../../_lib/persistence";
 
 const seed = createOrderRouterSeed();
-const state = { ...seed, audits: [] as AuditRecord[], routingPaused: false, emergencyStopActive: false, lastSyncAt: new Date().toISOString() };
+const state = bindPersistedMt5State("order-router", () => ({
+  ...seed,
+  audits: [] as AuditRecord[],
+  routingPaused: false,
+  emergencyStopActive: false,
+  lastSyncAt: new Date().toISOString()
+}));
 
 export function orderRouterRole(request?: Request): Mt5Role { return resolveMt5Role(request); }
 

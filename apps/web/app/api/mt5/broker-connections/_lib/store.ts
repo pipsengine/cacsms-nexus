@@ -16,9 +16,15 @@ import type {
   BrokerSeverity
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/broker-connections/types/broker-connections.types";
 import { resolveMt5Role } from "../../_lib/access";
+import { bindPersistedMt5State } from "../../_lib/persistence";
 
 const seed = createBrokerConnectionsSeed();
-const state = { ...seed, audits: [] as AuditRecord[], lastSyncAt: new Date().toISOString(), restorationApprovals: new Set<string>() };
+const state = bindPersistedMt5State("broker-connections", () => ({
+  ...seed,
+  audits: [] as AuditRecord[],
+  lastSyncAt: new Date().toISOString(),
+  restorationApprovals: new Set<string>()
+}));
 export function brokerRole(request?: Request): Mt5Role {
   return resolveMt5Role(request);
 }

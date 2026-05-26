@@ -3,9 +3,14 @@ import { calculateAccountSyncHealth, calculateExposureRisk, classifyReconciliati
 import { createAccountSyncSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/account-sync/data/account-sync.mock";
 import type { AccountReconciliation, AccountSyncLog, AccountSyncResponse, SyncedAccount } from "@/modules/mt5-infrastructure-and-broker-connectivity/account-sync/types/account-sync.types";
 import { resolveMt5Role } from "../../_lib/access";
+import { bindPersistedMt5State } from "../../_lib/persistence";
 
 const seed = createAccountSyncSeed();
-const state = { ...seed, audits: [] as AuditRecord[], lastSyncAt: new Date().toISOString() };
+const state = bindPersistedMt5State("account-sync", () => ({
+  ...seed,
+  audits: [] as AuditRecord[],
+  lastSyncAt: new Date().toISOString()
+}));
 export function accountRole(request?: Request): Mt5Role {
   return resolveMt5Role(request);
 }

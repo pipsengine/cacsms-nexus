@@ -1,3 +1,4 @@
+import { bindPersistedMt5State } from "@/app/api/mt5/_lib/persistence";
 import { getMockTrades } from "@/modules/mt5-infrastructure-and-broker-connectivity/trade-synchronization/data/trade-synchronization.mock";
 import type {
   TradeSyncLogEntry,
@@ -11,12 +12,12 @@ type TradeSyncRuntimeState = {
   updatedAt: string;
 };
 
-const state: TradeSyncRuntimeState = {
+const state = bindPersistedMt5State<TradeSyncRuntimeState>("trade-synchronization", () => ({
   frozen: false,
   trades: getMockTrades(),
   logs: [],
   updatedAt: new Date().toISOString()
-};
+}));
 
 export function getTradeSyncState() {
   return state;

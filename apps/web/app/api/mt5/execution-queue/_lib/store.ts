@@ -28,9 +28,10 @@ import type {
   QueueLog
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/execution-queue/types/execution-queue.types";
 import { resolveMt5Role } from "../../_lib/access";
+import { bindPersistedMt5State } from "../../_lib/persistence";
 
 const seed = createExecutionQueueSeed();
-const state = {
+const state = bindPersistedMt5State("execution-queue", () => ({
   queuePaused: false,
   emergencyStopActive: false,
   items: seed.items,
@@ -38,7 +39,7 @@ const state = {
   logs: seed.logs,
   bottlenecks: seed.bottlenecks,
   audits: [] as AuditRecord[]
-};
+}));
 
 export function resetExecutionQueueState() {
   const next = createExecutionQueueSeed();

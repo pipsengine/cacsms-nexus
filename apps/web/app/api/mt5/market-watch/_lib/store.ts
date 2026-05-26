@@ -3,8 +3,13 @@ import { calculateMarketHealth, dailyMovePercent, detectMarketAlerts, quoteStatu
 import { createMarketWatchSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/market-watch/data/market-watch.mock";
 import type { MarketInstrument, MarketWatchResponse } from "@/modules/mt5-infrastructure-and-broker-connectivity/market-watch/types/market-watch.types";
 import { resolveMt5Role } from "../../_lib/access";
+import { bindPersistedMt5State } from "../../_lib/persistence";
 
-const state = { ...createMarketWatchSeed(), audits: [] as AuditRecord[], lastRefreshAt: new Date().toISOString() };
+const state = bindPersistedMt5State("market-watch", () => ({
+  ...createMarketWatchSeed(),
+  audits: [] as AuditRecord[],
+  lastRefreshAt: new Date().toISOString()
+}));
 const permissions: Record<string, Mt5Role[]> = {
   refresh: ["Super Admin", "Infrastructure Admin", "Trading Admin"],
   manageWatchlist: ["Super Admin", "Infrastructure Admin", "Trading Admin", "Risk Manager", "Analyst"],

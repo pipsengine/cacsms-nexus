@@ -29,6 +29,7 @@ import {
   unsafeRetryDecision
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/execution-logs/algorithms/execution-logs.algorithms";
 import { resolveMt5Role } from "../../_lib/access";
+import { bindPersistedMt5State } from "../../_lib/persistence";
 
 const seed = createExecutionLogsSeed();
 
@@ -44,7 +45,7 @@ type ExecutionLogsState = {
   lastSyncAt: string;
 };
 
-const state: ExecutionLogsState = {
+const state = bindPersistedMt5State<ExecutionLogsState>("execution-logs", () => ({
   logs: seed.logs,
   brokerResponses: seed.brokerResponses,
   retries: seed.retries,
@@ -54,7 +55,7 @@ const state: ExecutionLogsState = {
   workflow: seed.workflow,
   audit: [],
   lastSyncAt: new Date().toISOString()
-};
+}));
 
 export function resetExecutionLogsState() {
   const next = createExecutionLogsSeed();

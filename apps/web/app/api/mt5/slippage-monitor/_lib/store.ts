@@ -30,16 +30,17 @@ import type {
   WorkflowResponse
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/slippage-monitor/types/slippage-monitor.types";
 import { resolveMt5Role } from "../../_lib/access";
+import { bindPersistedMt5State } from "../../_lib/persistence";
 
 const seed = () => {
   const s = createSlippageMonitorSeed();
   return { ...s, audits: [] as AuditRecord[] };
 };
 
-const state = {
+const state = bindPersistedMt5State("slippage-monitor", () => ({
   ...seed(),
   unsafeExecutionDisabled: false
-};
+}));
 
 export function resetSlippageMonitorState() {
   const next = seed();

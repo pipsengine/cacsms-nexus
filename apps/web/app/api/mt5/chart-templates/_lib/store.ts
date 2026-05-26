@@ -3,8 +3,12 @@ import { calculateTemplateHealth, detectTemplateIssues, nextVersion, templateCom
 import { createChartTemplatesSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/chart-templates/data/chart-templates.mock";
 import type { ChartTemplate, TemplateResponse } from "@/modules/mt5-infrastructure-and-broker-connectivity/chart-templates/types/chart-templates.types";
 import { resolveMt5Role } from "../../_lib/access";
+import { bindPersistedMt5State } from "../../_lib/persistence";
 
-const state = { ...createChartTemplatesSeed(), audits: [] as AuditRecord[] };
+const state = bindPersistedMt5State("chart-templates", () => ({
+  ...createChartTemplatesSeed(),
+  audits: [] as AuditRecord[]
+}));
 const permissions: Record<string, Mt5Role[]> = {
   create: ["Super Admin", "Infrastructure Admin", "Trading Admin", "Risk Manager", "Analyst"],
   clone: ["Super Admin", "Infrastructure Admin", "Trading Admin", "Risk Manager", "Analyst"],

@@ -19,8 +19,13 @@ import type {
   TerminalTone
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/terminal-status/types/terminal-status.types";
 import { resolveMt5Role } from "../../_lib/access";
+import { bindPersistedMt5State } from "../../_lib/persistence";
 
-const state = { ...createTerminalStatusSeed(), audits: [] as AuditRecord[], lastSyncAt: new Date().toISOString() };
+const state = bindPersistedMt5State("terminal-status", () => ({
+  ...createTerminalStatusSeed(),
+  audits: [] as AuditRecord[],
+  lastSyncAt: new Date().toISOString()
+}));
 export function terminalStatusRole(request?: Request): Mt5Role {
   return resolveMt5Role(request);
 }

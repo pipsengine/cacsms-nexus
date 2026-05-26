@@ -1,0 +1,317 @@
+import { query } from "@/lib/postgres";
+
+import { MT5_MODULE_KEYS, type Mt5ModuleKey } from "./module-keys";
+
+const moduleImporters: Record<Mt5ModuleKey, () => Promise<unknown>> = {
+  "mt5-control-center": () => import("./store"),
+  "account-sync": () => import("../account-sync/_lib/store"),
+  "broker-connections": () => import("../broker-connections/_lib/store"),
+  "chart-control": () => import("../chart-control/_lib/store"),
+  "chart-templates": () => import("../chart-templates/_lib/store"),
+  "connection-health": () => import("../connection-health/_lib/store"),
+  "ea-bridge": () => import("../ea-bridge/_lib/store"),
+  "ea-monitoring": () => import("../ea-monitoring/_lib/store"),
+  "error-logs": () => import("../error-logs/_lib/store"),
+  "execution-logs": () => import("../execution-logs/_lib/store"),
+  "execution-queue": () => import("../execution-queue/_lib/store"),
+  "latency-monitor": () => import("../latency-monitor/_lib/store"),
+  "market-watch": () => import("../market-watch/_lib/store"),
+  "order-router": () => import("../order-router/_lib/store"),
+  "slippage-monitor": () => import("../slippage-monitor/_lib/store"),
+  "spread-monitor": () => import("../spread-monitor/_lib/store"),
+  "symbol-sync": () => import("../symbol-sync/_lib/store"),
+  "terminal-status": () => import("../terminal-status/_lib/store"),
+  "trade-synchronization": () => import("../trade-synchronization/store")
+};
+
+type ModuleEntry = {
+  state: object;
+  hydrated: boolean;
+};
+
+const moduleRegistry = new Map<Mt5ModuleKey, ModuleEntry>();
+const persistTimers = new Map<Mt5ModuleKey, ReturnType<typeof setTimeout>>();
+let schemaReady: Promise<void> | null = null;
+
+const MUTATING_ARRAY_METHODS = new Set([
+  "copyWithin",
+  "fill",
+  "pop",
+  "push",
+  "reverse",
+  "shift",
+  "sort",
+  "splice",
+  "unshift"
+]);
+
+function shouldUseDatabase() {
+  if (process.env.MT5_USE_DATABASE === "false") {
+    return false;
+  }
+  if (process.env.NODE_ENV === "test" && process.env.MT5_USE_DATABASE !== "true") {
+    return false;
+  }
+  return Boolean(process.env.DATABASE_URL);
+}
+
+async function ensureSchema() {
+  if (!schemaReady) {
+    schemaReady = query(`
+      create table if not exists mt5_module_states (
+        module_key text primary key,
+        state jsonb not null default '{}'::jsonb,
+        updated_at timestamptz not null default now()
+      )
+    `).then(() => undefined);
+  }
+  await schemaReady;
+}
+
+function serializeState(state: object) {
+  return JSON.stringify(state, (_key, value) => {
+    if (value instanceof Set) {
+      return { __cacsmsSet: true, values: [...value] };
+    }
+    return value;
+  });
+}
+
+function reviveValue<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => reviveValue(item)) as T;
+  }
+
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (record.__cacsmsSet === true && Array.isArray(record.values)) {
+      return new Set(record.values) as T;
+    }
+
+    for (const [key, nested] of Object.entries(record)) {
+      record[key] = reviveValue(nested);
+    }
+  }
+
+  return value;
+}
+
+async function loadModuleState(moduleKey: Mt5ModuleKey) {
+  await ensureSchema();
+  const result = await query<{ state: object }>(
+    "select state from mt5_module_states where module_key = $1",
+    [moduleKey]
+  );
+  const row = result.rows[0]?.state;
+  return row ? (reviveValue(row) as object) : null;
+}
+
+async function writeModuleState(moduleKey: Mt5ModuleKey, state: object) {
+  await ensureSchema();
+  await query(
+    `
+      insert into mt5_module_states (module_key, state, updated_at)
+      values ($1, $2::jsonb, now())
+      on conflict (module_key)
+      do update set state = excluded.state, updated_at = now()
+    `,
+    [moduleKey, serializeState(state)]
+  );
+}
+
+function applyHydratedState(target: Record<string, unknown>, source: Record<string, unknown>) {
+  for (const key of Object.keys(target)) {
+    if (!(key in source)) {
+      delete target[key];
+    }
+  }
+
+  for (const [key, sourceValue] of Object.entries(source)) {
+    const targetValue = target[key];
+
+    if (Array.isArray(sourceValue) && Array.isArray(targetValue)) {
+      targetValue.splice(0, targetValue.length, ...sourceValue.map((item) => reviveValue(item)));
+      continue;
+    }
+
+    if (
+      sourceValue &&
+      typeof sourceValue === "object" &&
+      !Array.isArray(sourceValue) &&
+      !(sourceValue instanceof Set) &&
+      targetValue &&
+      typeof targetValue === "object" &&
+      !Array.isArray(targetValue) &&
+      !(targetValue instanceof Set)
+    ) {
+      applyHydratedState(targetValue as Record<string, unknown>, sourceValue as Record<string, unknown>);
+      continue;
+    }
+
+    target[key] = reviveValue(sourceValue);
+  }
+}
+
+function schedulePersist(moduleKey: Mt5ModuleKey, state: object) {
+  if (!shouldUseDatabase()) {
+    return;
+  }
+
+  const existing = persistTimers.get(moduleKey);
+  if (existing) {
+    clearTimeout(existing);
+  }
+
+  persistTimers.set(
+    moduleKey,
+    setTimeout(() => {
+      persistTimers.delete(moduleKey);
+      void writeModuleState(moduleKey, state).catch((error) => {
+        console.error(`Failed to persist MT5 module state for "${moduleKey}".`, error);
+      });
+    }, 150)
+  );
+}
+
+function trackValue(moduleKey: Mt5ModuleKey, rootState: object, value: unknown, seen: WeakSet<object>): unknown {
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  if (seen.has(value)) {
+    return value;
+  }
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return new Proxy(value, {
+      get(target, property, receiver) {
+        const current = Reflect.get(target, property, receiver);
+        if (typeof current === "function" && MUTATING_ARRAY_METHODS.has(String(property))) {
+          return (...args: unknown[]) => {
+            const result = current.apply(target, args);
+            schedulePersist(moduleKey, rootState);
+            return result;
+          };
+        }
+        if (typeof current === "object" && current !== null) {
+          return trackValue(moduleKey, rootState, current, seen);
+        }
+        return current;
+      },
+      set(target, property, nextValue, receiver) {
+        const tracked = trackValue(moduleKey, rootState, nextValue, seen);
+        const result = Reflect.set(target, property, tracked, receiver);
+        schedulePersist(moduleKey, rootState);
+        return result;
+      }
+    });
+  }
+
+  return new Proxy(value as object, {
+    get(target, property, receiver) {
+      const current = Reflect.get(target, property, receiver);
+      if (typeof current === "object" && current !== null) {
+        return trackValue(moduleKey, rootState, current, seen);
+      }
+      return current;
+    },
+    set(target, property, nextValue, receiver) {
+      const tracked = trackValue(moduleKey, rootState, nextValue, seen);
+      const result = Reflect.set(target, property, tracked, receiver);
+      schedulePersist(moduleKey, rootState);
+      return result;
+    }
+  });
+}
+
+function registerModuleState(moduleKey: Mt5ModuleKey, state: object) {
+  if (!shouldUseDatabase()) {
+    return;
+  }
+
+  trackValue(moduleKey, state, state, new WeakSet());
+  moduleRegistry.set(moduleKey, { state, hydrated: false });
+}
+
+export function bindPersistedMt5State<T extends object>(moduleKey: Mt5ModuleKey, createSeed: () => T): T {
+  const state = createSeed();
+  registerModuleState(moduleKey, state);
+  if (shouldUseDatabase()) {
+    void ensureMt5ModuleHydrated(moduleKey);
+  }
+  return state;
+}
+
+export async function preloadMt5ModuleStates() {
+  if (!shouldUseDatabase()) {
+    return;
+  }
+
+  await Promise.all(MT5_MODULE_KEYS.map((moduleKey) => ensureMt5ModuleHydrated(moduleKey)));
+}
+
+export async function ensureMt5ModuleHydrated(moduleKey: Mt5ModuleKey) {
+  if (!shouldUseDatabase()) {
+    return;
+  }
+
+  if (!moduleRegistry.has(moduleKey)) {
+    await moduleImporters[moduleKey]();
+  }
+
+  const entry = moduleRegistry.get(moduleKey);
+  if (!entry || entry.hydrated) {
+    return;
+  }
+
+  const loaded = await loadModuleState(moduleKey);
+  if (loaded) {
+    applyHydratedState(entry.state as Record<string, unknown>, loaded as Record<string, unknown>);
+    trackValue(moduleKey, entry.state, entry.state, new WeakSet());
+  } else {
+    await writeModuleState(moduleKey, entry.state);
+  }
+
+  entry.hydrated = true;
+}
+
+export async function ensureMt5ModulesHydrated(moduleKeys: Mt5ModuleKey[]) {
+  const uniqueKeys = [...new Set(moduleKeys)];
+  await Promise.all(uniqueKeys.map((moduleKey) => ensureMt5ModuleHydrated(moduleKey)));
+}
+
+export async function flushMt5ModulePersistence() {
+  if (!shouldUseDatabase()) {
+    return;
+  }
+
+  await Promise.all(
+    [...persistTimers.entries()].map(async ([moduleKey, timer]) => {
+      clearTimeout(timer);
+      persistTimers.delete(moduleKey);
+      const entry = moduleRegistry.get(moduleKey);
+      if (entry) {
+        await writeModuleState(moduleKey, entry.state);
+      }
+    })
+  );
+}
+
+export async function resetMt5ModuleState(moduleKey: Mt5ModuleKey, createSeed: () => object) {
+  const entry = moduleRegistry.get(moduleKey);
+  if (!entry) {
+    return;
+  }
+
+  const seeded = createSeed();
+  for (const key of Object.keys(entry.state)) {
+    delete (entry.state as Record<string, unknown>)[key];
+  }
+  Object.assign(entry.state, seeded);
+
+  if (shouldUseDatabase()) {
+    await writeModuleState(moduleKey, entry.state);
+    entry.hydrated = true;
+  }
+}

@@ -3,8 +3,13 @@ import { analyzeChart, calculateWorkspaceHealth } from "@/modules/mt5-infrastruc
 import { createChartControlSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/chart-control/data/chart-control.mock";
 import type { ChartControlResponse, Timeframe } from "@/modules/mt5-infrastructure-and-broker-connectivity/chart-control/types/chart-control.types";
 import { resolveMt5Role } from "../../_lib/access";
+import { bindPersistedMt5State } from "../../_lib/persistence";
 
-const state = { ...createChartControlSeed(), audits: [] as AuditRecord[], lastRefreshAt: new Date().toISOString() };
+const state = bindPersistedMt5State("chart-control", () => ({
+  ...createChartControlSeed(),
+  audits: [] as AuditRecord[],
+  lastRefreshAt: new Date().toISOString()
+}));
 const permissions: Record<string, Mt5Role[]> = {
   refresh: ["Super Admin", "Infrastructure Admin", "Trading Admin"],
   configure: ["Super Admin", "Infrastructure Admin", "Trading Admin", "Risk Manager", "Analyst"],

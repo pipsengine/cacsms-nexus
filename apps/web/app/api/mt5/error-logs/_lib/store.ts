@@ -38,6 +38,7 @@ import type {
   Mt5ErrorLogsSummaryResponse
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-error-logs/types/mt5-error-logs.types";
 import { resolveMt5Role } from "../../_lib/access";
+import { bindPersistedMt5State } from "../../_lib/persistence";
 
 const seed = createMt5ErrorLogsSeed();
 
@@ -50,14 +51,14 @@ type ErrorLogsState = {
   lastSyncAt: string;
 };
 
-const state: ErrorLogsState = {
+const state = bindPersistedMt5State<ErrorLogsState>("error-logs", () => ({
   errors: seed.errors,
   diagnostics: seed.diagnostics,
   incidents: seed.incidents,
   resolutions: seed.resolutions,
   audits: [],
   lastSyncAt: new Date().toISOString()
-};
+}));
 
 export function resetErrorLogsState() {
   const next = createMt5ErrorLogsSeed();

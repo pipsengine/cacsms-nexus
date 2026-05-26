@@ -18,11 +18,12 @@ import type {
   Terminal
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/types/mt5-control-center.types";
 import { resolveMt5Role } from "./access";
+import { bindPersistedMt5State } from "./persistence";
 
-const state = {
+const state = bindPersistedMt5State("mt5-control-center", () => ({
   ...createMt5Seed(),
   audit: [] as AuditRecord[]
-};
+}));
 
 export function getRole(request?: Request): Mt5Role {
   return resolveMt5Role(request);

@@ -28,16 +28,17 @@ import type {
   TrendsResponse
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/spread-monitor/types/spread-monitor.types";
 import { resolveMt5Role } from "../../_lib/access";
+import { bindPersistedMt5State } from "../../_lib/persistence";
 
 const seed = () => {
   const s = createSpreadMonitorSeed();
   return { ...s, audits: [] as AuditRecord[] };
 };
 
-const state = {
+const state = bindPersistedMt5State("spread-monitor", () => ({
   ...seed(),
   disabledSymbols: new Set<string>()
-};
+}));
 
 export function resetSpreadMonitorState() {
   const next = seed();

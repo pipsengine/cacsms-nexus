@@ -21,22 +21,24 @@ function createPool() {
   });
 }
 
-export const postgresPool =
-  globalThis.__cacsmsPgPool ??
-  (() => {
-    const pool = createPool();
-    if (process.env.NODE_ENV !== "production") {
-      globalThis.__cacsmsPgPool = pool;
-    }
-    return pool;
-  })();
+function getPostgresPool() {
+  if (globalThis.__cacsmsPgPool) {
+    return globalThis.__cacsmsPgPool;
+  }
+
+  const pool = createPool();
+  if (process.env.NODE_ENV !== "production") {
+    globalThis.__cacsmsPgPool = pool;
+  }
+  return pool;
+}
 
 export async function query<T extends QueryResultRow>(text: string, values?: unknown[]) {
-  return postgresPool.query<T>(text, values);
+  return getPostgresPool().query<T>(text, values);
 }
 
 export async function withClient<T>(handler: (client: PoolClient) => Promise<T>) {
-  const client = await postgresPool.connect();
+  const client = await getPostgresPool().connect();
   try {
     return await handler(client);
   } finally {

@@ -20,6 +20,7 @@ import type {
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-monitoring/types/ea-monitoring.types";
 import { buildWorkflow, eaHealthScore, readinessValidation, strategyBindingIntegrity, suspiciousBehavior } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-monitoring/algorithms/ea-monitoring.algorithms";
 import { resolveMt5Role } from "../../_lib/access";
+import { bindPersistedMt5State } from "../../_lib/persistence";
 
 const seed = createEaMonitoringSeed();
 
@@ -35,7 +36,7 @@ type EaMonitoringState = {
   lastSyncAt: string;
 };
 
-const state: EaMonitoringState = {
+const state = bindPersistedMt5State<EaMonitoringState>("ea-monitoring", () => ({
   instances: seed.instances,
   commands: seed.commands,
   bindings: seed.bindings,
@@ -45,7 +46,7 @@ const state: EaMonitoringState = {
   diagnostics: seed.diagnostics,
   audit: [],
   lastSyncAt: new Date().toISOString()
-};
+}));
 
 export function resetEaMonitoringState() {
   const next = createEaMonitoringSeed();

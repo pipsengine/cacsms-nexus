@@ -3,9 +3,14 @@ import { calculateSymbolHealth, classifyFeed, detectSymbolIssues, normalizeBroke
 import { createSymbolSyncSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/symbol-sync/data/symbol-sync.mock";
 import type { SyncedSymbol, SymbolSyncResponse } from "@/modules/mt5-infrastructure-and-broker-connectivity/symbol-sync/types/symbol-sync.types";
 import { resolveMt5Role } from "../../_lib/access";
+import { bindPersistedMt5State } from "../../_lib/persistence";
 
 const seed = createSymbolSyncSeed();
-const state = { ...seed, audits: [] as AuditRecord[], lastSyncAt: new Date().toISOString() };
+const state = bindPersistedMt5State("symbol-sync", () => ({
+  ...seed,
+  audits: [] as AuditRecord[],
+  lastSyncAt: new Date().toISOString()
+}));
 const permissions: Record<string, Mt5Role[]> = {
   sync: ["Super Admin", "Infrastructure Admin"],
   validate: ["Super Admin", "Infrastructure Admin"],

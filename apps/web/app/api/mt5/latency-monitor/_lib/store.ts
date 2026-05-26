@@ -25,17 +25,18 @@ import type {
   WorkflowResponse
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/latency-monitor/types/latency-monitor.types";
 import { resolveMt5Role } from "../../_lib/access";
+import { bindPersistedMt5State } from "../../_lib/persistence";
 
 function seed() {
   const s = createLatencyMonitorSeed();
   return { ...s, audits: [] as AuditRecord[], tests: [] as LatencyTestResult[] };
 }
 
-const state = {
+const state = bindPersistedMt5State("latency-monitor", () => ({
   ...seed(),
   blockedMetricIds: new Set<string>(),
   testCounter: 1
-};
+}));
 
 export function resetLatencyMonitorState() {
   const next = seed();

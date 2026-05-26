@@ -28,9 +28,15 @@ import type {
   TradeCommand
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-bridge/types/ea-bridge.types";
 import { resolveMt5Role } from "../../_lib/access";
+import { bindPersistedMt5State } from "../../_lib/persistence";
 
 const seed = createEaBridgeSeed();
-const state = { ...seed, audits: [] as AuditRecord[], lastSyncAt: new Date().toISOString(), usedNonces: new Set(seed.messages.map((message) => message.nonce)) };
+const state = bindPersistedMt5State("ea-bridge", () => ({
+  ...seed,
+  audits: [] as AuditRecord[],
+  lastSyncAt: new Date().toISOString(),
+  usedNonces: new Set(seed.messages.map((message) => message.nonce))
+}));
 const issuedCredentials = new Map<string, { ingestionTokenHash: string; signingSecret: string }>();
 export function eaBridgeRole(request?: Request): Mt5Role {
   return resolveMt5Role(request);

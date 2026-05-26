@@ -35,6 +35,7 @@ import type {
   WorkflowResponse
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/connection-health/types/connection-health.types";
 import { resolveMt5Role } from "../../_lib/access";
+import { bindPersistedMt5State } from "../../_lib/persistence";
 
 const seed = () => {
   const components = createMockComponents();
@@ -43,11 +44,11 @@ const seed = () => {
   return { components, dependencyMap: map, latency, packetLoss, workflow: createMockWorkflow(components), incidents: createMockIncidents(), logs: createMockLogs() };
 };
 
-const state = {
+const state = bindPersistedMt5State("connection-health", () => ({
   disabledUnsafeTrading: false,
   ...seed(),
   audits: [] as AuditRecord[]
-};
+}));
 
 export function resetConnectionHealthState() {
   const next = seed();
