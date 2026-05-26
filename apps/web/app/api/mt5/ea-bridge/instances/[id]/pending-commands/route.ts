@@ -6,7 +6,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   try {
     const id = (await context.params).id;
     const envelope = await request.json();
-    return ok(await withEaBridgeStore(() => pendingTradeCommands(id, envelope, request)));
+    return ok(await withEaBridgeStore(() => pendingTradeCommands(id, envelope, request, envelope)));
   } catch (error) {
     return failure(error);
   }

@@ -28,6 +28,10 @@ bool NexusHttpPost(const string url, const string headers, const string body, st
    }
 
    g_nexusState.consecutiveHttpFailures++;
+   if(http_status == 403 && StringFind(response_body, "SigningSecret") >= 0)
+      Print("Nexus Bridge signature failed. Paste BOTH IngestionToken and SigningSecret from the same EA Bridge receipt (Test Pairing must pass first).");
+   else if(http_status == 403 && StringFind(response_body, "IngestionToken") >= 0)
+      Print("Nexus Bridge authorization failed. Reissue EA Pairing in Nexus, paste the new IngestionToken and SigningSecret into EA inputs, then re-attach the EA.");
    PrintFormat("Nexus Bridge POST %s failed after %d attempt(s). HTTP=%d err=%d body=%s",
       url, g_nexusConfig.httpRetryCount + 1, http_status, GetLastError(), response_body);
    return false;

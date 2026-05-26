@@ -1,5 +1,5 @@
 #property strict
-#property version   "2.10"
+#property version   "2.11"
 #property description "Cacsms Nexus signed MT5 telemetry and guarded command bridge."
 
 #include "Cacsms/NexusConfig.mqh"
@@ -49,6 +49,16 @@ int OnInit()
    g_nexusConfig.pollApprovedCommands = PollApprovedCommands;
    g_nexusConfig.enableCommandExecution = EnableCommandExecution;
    NexusResetRuntimeState();
+
+   PrintFormat("Nexus Bridge config: baseUrl=%s instanceId=%s ingestionTokenLen=%d prefix=%s suffix=%s signingSecretLen=%d secretPrefix=%s secretSuffix=%s",
+      g_nexusConfig.baseUrl,
+      g_nexusConfig.instanceId,
+      StringLen(g_nexusConfig.ingestionToken),
+      StringSubstr(g_nexusConfig.ingestionToken, 0, MathMin(4, StringLen(g_nexusConfig.ingestionToken))),
+      StringSubstr(g_nexusConfig.ingestionToken, MathMax(0, StringLen(g_nexusConfig.ingestionToken) - 4)),
+      StringLen(g_nexusConfig.signingSecret),
+      StringSubstr(g_nexusConfig.signingSecret, 0, MathMin(4, StringLen(g_nexusConfig.signingSecret))),
+      StringSubstr(g_nexusConfig.signingSecret, MathMax(0, StringLen(g_nexusConfig.signingSecret) - 4)));
 
    int timerSeconds = MathMin(g_nexusConfig.heartbeatIntervalSeconds, g_nexusConfig.commandPollIntervalSeconds);
    EventSetTimer(MathMax(1, timerSeconds));

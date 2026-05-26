@@ -95,6 +95,41 @@ export type EaPairingReceipt = {
   state: "Reissued Pairing Credentials";
 };
 
+export type EaIngestionAuthErrorCode =
+  | "token_missing"
+  | "token_mismatch"
+  | "signing_secret_mismatch"
+  | "ea_instance_not_found"
+  | "pairing_revoked"
+  | "account_mismatch"
+  | "terminal_mismatch";
+
+export type EaIngestionTokenFingerprint = {
+  length: number;
+  prefix: string;
+  suffix: string;
+};
+
+export type EaIngestionAuthDiagnostics = {
+  endpoint: string;
+  matchedEaInstanceId: string | null;
+  accountNumber: string | null;
+  broker: string | null;
+  received: EaIngestionTokenFingerprint | null;
+  expected: EaIngestionTokenFingerprint | null;
+  tokenSource: string | null;
+};
+
+export type EaPairingTestResult = {
+  accepted: boolean;
+  code: "accepted" | EaIngestionAuthErrorCode;
+  eaInstanceId?: string;
+  accountLogin?: string;
+  broker?: string;
+  diagnostics?: EaIngestionAuthDiagnostics;
+  error?: string;
+};
+
 export type EaInstance = {
   id: string;
   eaInstanceUuid: string;
@@ -238,6 +273,12 @@ export type BridgeScore = {
   factors: Record<string, number>;
 };
 
+export type EaActivePairingHint = {
+  ingestionToken?: EaIngestionTokenFingerprint;
+  signingSecret?: EaIngestionTokenFingerprint;
+  tokenCreatedAt: string;
+};
+
 export type EaBridgeResponse = {
   meta: { timestamp: string; currentRole: Mt5Role; streamEndpoint: string; monitoringMode: "Autonomous Secure Bridge" };
   kpis: Array<{ label: string; value: string; status: BridgeTone; detail: string; updatedAt: string }>;
@@ -262,4 +303,5 @@ export type EaBridgeResponse = {
     canEmergencyDisable: boolean;
     canAutoRemediate: boolean;
   };
+  activePairing: Record<string, EaActivePairingHint>;
 };

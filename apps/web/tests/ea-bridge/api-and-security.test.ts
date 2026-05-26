@@ -16,8 +16,10 @@ import {
   rotateBridgeToken,
   reissueEaPairingCredentials,
   setBridgeTrading,
-  signBridgeEnvelope
+  signBridgeEnvelope,
+  testEaPairingCredentials
 } from "@/app/api/mt5/ea-bridge/_lib/store";
+import { EaIngestionAuthError } from "@/app/api/mt5/ea-bridge/_lib/ingestion-auth";
 import { createEaBridgeSeed } from "@/tests/fixtures/ea-bridge.fixture";
 import type { SignedBridgeEnvelope, TerminalMessageType, TradeCommand } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-bridge/types/ea-bridge.types";
 
@@ -87,11 +89,46 @@ describe("EA bridge domain controls", () => {
   it("fails closed for unauthenticated EA ingestion and command admission", () => {
     const original = process.env.MT5_EA_INGESTION_SECRET;
     delete process.env.MT5_EA_INGESTION_SECRET;
-    expect(() => authorizeEaIngestion(new Request("http://localhost/api/mt5/ea-bridge/messages"))).toThrow(/not authorized/);
+    expect(() => authorizeEaIngestion({
+      request: new Request("http://localhost/api/mt5/ea-bridge/messages"),
+      endpointName: "ingest/heartbeat",
+      instanceId: "ea-ld4-01"
+    })).toThrow(EaIngestionAuthError);
     process.env.MT5_EA_INGESTION_SECRET = "bridge-secret";
-    expect(() => authorizeEaIngestion(new Request("http://localhost/api/mt5/ea-bridge/messages", { headers: { authorization: "Bearer bridge-secret" } }))).not.toThrow();
+    expect(() => authorizeEaIngestion({
+      request: new Request("http://localhost/api/mt5/ea-bridge/messages", { headers: { authorization: "Bearer bridge-secret" } }),
+      endpointName: "ingest/heartbeat",
+      instanceId: "ea-ld4-01"
+    })).not.toThrow();
     if (original === undefined) delete process.env.MT5_EA_INGESTION_SECRET; else process.env.MT5_EA_INGESTION_SECRET = original;
     expect(() => queueTradeCommand({ ...createEaBridgeSeed().commands[0], commandUuid: "new-command" }, "Read-Only Viewer", true)).toThrow(/not authorized/);
+  });
+
+  it("accepts reissued pairing credentials through test pairing heartbeat", () => {
+    const receipt = reissueEaPairingCredentials("ea-ld4-01", "Infrastructure Admin", true, new Request("http://127.0.0.1:3000/api/mt5/ea-bridge/instances/ea-ld4-01/reissue-pairing"));
+    const result = testEaPairingCredentials(
+      receipt.eaInstanceId,
+      receipt.ingestionToken,
+      receipt.signingSecret,
+      "Infrastructure Admin",
+      true,
+      new Request("http://127.0.0.1:3000/api/mt5/ea-bridge/instances/ea-ld4-01/test-pairing")
+    );
+    expect(result.accepted).toBe(true);
+    expect(result.code).toBe("accepted");
+    expect(result.diagnostics?.matchedEaInstanceId).toBe("ea-ld4-01");
+  });
+
+  it("accepts ingestion tokens from x-ingestion-token header", () => {
+    const receipt = reissueEaPairingCredentials("ea-ld4-01", "Infrastructure Admin", true);
+    expect(() => authorizeEaIngestion({
+      request: new Request("http://localhost/api/mt5/ea-bridge/ingest/heartbeat", {
+        headers: { "x-ingestion-token": receipt.ingestionToken }
+      }),
+      endpointName: "ingest/heartbeat",
+      instanceId: receipt.eaInstanceId,
+      accountLogin: receipt.accountLogin
+    })).not.toThrow();
   });
 
   it("ingests signed terminal telemetry and blocks replayed or tampered envelopes", () => {
@@ -217,6 +254,19 @@ describe("EA bridge domain controls", () => {
       const orderResult = ingestSignedBridgeEvent(orders, "Pending Order Update", request);
       expect(orderResult.accountSync?.orders).toBe(1);
     });
+  });
+
+  it("signs envelopes with short base64url pairing secrets (43-byte HMAC block padding)", () => {
+    const secret = "v-wVxAXQ-qAOPqOSWCj11UFU77bnKyYhPhu6DAXt9XE";
+    const unsigned = {
+      instanceId: "ea-cacsms-mt5-0001",
+      messageType: "Heartbeat" as const,
+      timestamp: "2026-05-26T15:38:08.000Z",
+      nonce: "mt5-heartbeat-test",
+      payloadJson: "{\"terminalName\":\"Office Terminal\",\"accountLogin\":\"52877052\",\"brokerConnected\":true,\"marketDataActive\":true,\"tradingEnabled\":true,\"latencyMs\":12}"
+    };
+    expect(secret.length).toBe(43);
+    expect(signBridgeEnvelope(unsigned, secret)).toMatch(/^[a-f0-9]{64}$/);
   });
 
   it("retries only safe undelivered messages and audits changes", () => {

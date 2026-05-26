@@ -6,7 +6,7 @@ import { acknowledgeTradeCommand } from "../../_lib/store";
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as SignedBridgeEnvelope;
-    const result = await withEaBridgeStore(() => acknowledgeTradeCommand(body.instanceId, body, request));
+    const result = await withEaBridgeStore(() => acknowledgeTradeCommand(body.instanceId, body, request, body));
     return ok(result, 202);
   } catch (error) {
     return failure(error);

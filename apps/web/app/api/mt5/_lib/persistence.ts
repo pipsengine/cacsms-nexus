@@ -354,6 +354,34 @@ export async function ensureMt5ModulesHydrated(moduleKeys: Mt5ModuleKey[]) {
   await Promise.all(uniqueKeys.map((moduleKey) => ensureMt5ModuleHydrated(moduleKey)));
 }
 
+export async function refreshPersistedModuleSlice(moduleKey: Mt5ModuleKey, sliceKey: string) {
+  if (!shouldUseDatabase()) {
+    return;
+  }
+
+  if (!moduleRegistry.has(moduleKey)) {
+    await moduleImporters[moduleKey]();
+  }
+
+  const entry = moduleRegistry.get(moduleKey);
+  if (!entry) {
+    return;
+  }
+
+  const loaded = await loadModuleState(moduleKey);
+  if (!loaded) {
+    return;
+  }
+
+  const slice = (loaded as Record<string, unknown>)[sliceKey];
+  if (!slice || typeof slice !== "object" || Array.isArray(slice)) {
+    return;
+  }
+
+  (entry.state as Record<string, unknown>)[sliceKey] = reviveValue(slice);
+  trackValue(moduleKey, entry.state, (entry.state as Record<string, unknown>)[sliceKey], new WeakSet());
+}
+
 export async function flushMt5ModulePersistence() {
   if (!shouldUseDatabase()) {
     return;

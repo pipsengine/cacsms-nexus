@@ -6,7 +6,7 @@ import { ingestSignedBridgeEvent } from "../../_lib/store";
 export async function POST(request: Request) {
   try {
     const envelope = (await request.json()) as SignedBridgeEnvelope;
-    const result = await withEaBridgeStore(() => ingestSignedBridgeEvent(envelope, "Position Update", request));
+    const result = await withEaBridgeStore(() => ingestSignedBridgeEvent(envelope, "Position Update", request, envelope));
     return ok(result, 202);
   } catch (error) {
     return failure(error);

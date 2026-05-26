@@ -18,17 +18,24 @@ string NexusHexEncode(const uchar &value[])
 
 string NexusHmacSha256(const string secret, const string value)
 {
-   uchar key[], data[], empty[], key_hash[];
-   NexusStringBytes(secret, key);
+   uchar key_raw[], data[], empty[], key_hash[];
+   NexusStringBytes(secret, key_raw);
    NexusStringBytes(value, data);
-   if(ArraySize(key) > 64)
+
+   // HMAC requires a 64-byte block key. MQL5 ArrayResize does not zero-fill new slots.
+   uchar key[64];
+   ArrayInitialize(key, 0);
+   if(ArraySize(key_raw) > 64)
    {
-      if(CryptEncode(CRYPT_HASH_SHA256, key, empty, key_hash) <= 0)
+      if(CryptEncode(CRYPT_HASH_SHA256, key_raw, empty, key_hash) <= 0)
          return "";
-      ArrayCopy(key, key_hash);
+      ArrayCopy(key, key_hash, 0, 0, MathMin(64, ArraySize(key_hash)));
+   }
+   else
+   {
+      ArrayCopy(key, key_raw, 0, 0, ArraySize(key_raw));
    }
 
-   ArrayResize(key, 64);
    uchar inner_pad[64], outer_pad[64];
    for(int index = 0; index < 64; index++)
    {

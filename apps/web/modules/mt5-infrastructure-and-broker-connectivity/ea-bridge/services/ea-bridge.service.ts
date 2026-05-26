@@ -1,4 +1,16 @@
-import type { EaBridgeResponse } from "../types/ea-bridge.types";
+import type { EaBridgeResponse, EaIngestionAuthDiagnostics, EaIngestionTokenFingerprint, EaPairingTestResult } from "../types/ea-bridge.types";
+
+export class EaBridgeActionError extends Error {
+  code?: string;
+  diagnostics?: EaIngestionAuthDiagnostics;
+
+  constructor(message: string, code?: string, diagnostics?: EaIngestionAuthDiagnostics) {
+    super(message);
+    this.name = "EaBridgeActionError";
+    this.code = code;
+    this.diagnostics = diagnostics;
+  }
+}
 
 export async function fetchEaBridge() {
   const response = await fetch("/api/mt5/ea-bridge", { cache: "no-store" });
@@ -12,7 +24,17 @@ export async function runEaBridgeAction(path: string, body: Record<string, unkno
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body)
   });
-  const payload = (await response.json()) as { error?: string };
-  if (!response.ok) throw new Error(payload.error ?? "EA Bridge operation failed.");
+  const payload = (await response.json()) as EaPairingTestResult & {
+    error?: string;
+    code?: string;
+    diagnostics?: EaIngestionAuthDiagnostics;
+  };
+  if (!response.ok) {
+    throw new EaBridgeActionError(
+      payload.error ?? "EA Bridge operation failed.",
+      payload.code,
+      payload.diagnostics
+    );
+  }
   return payload;
 }

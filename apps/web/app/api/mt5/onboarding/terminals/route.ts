@@ -1,5 +1,5 @@
 import { accounts, provisionAccountBinding } from "../../account-sync/_lib/store";
-import { provisionEaBridgeInstance, publicBridgeInstances } from "../../ea-bridge/_lib/store";
+import { provisionEaBridgeInstance, publicBridgeInstances, eaBridgePublicBaseUrl } from "../../ea-bridge/_lib/store";
 import { provisionEaTerminalHubFromOnboarding } from "../../ea-terminal-hub/_lib/store";
 import { failure, ok } from "../../_lib/http";
 import { INFRASTRUCTURE_REGISTRATION_MODULE_KEYS, withMt5Modules } from "../../_lib/ensure-ready";
@@ -53,7 +53,7 @@ function onboardTerminal(input: TerminalOnboardingInput, role: ReturnType<typeof
   provisionEaTerminalHubFromOnboarding({ terminal, terminalPath: input.terminalPath, mt5DataPath: input.mt5DataPath, eaInstanceId: pairing.instance.id }, role, request);
   const receipt: TerminalOnboardingReceipt = {
     terminal, accountId, eaInstanceId: pairing.instance.id, ingestionToken: pairing.ingestionToken, signingSecret: pairing.signingSecret,
-    nexusBaseUrl: new URL(request.url).origin, state: "Awaiting Verified Heartbeat"
+    nexusBaseUrl: eaBridgePublicBaseUrl(request), state: "Awaiting Verified Heartbeat"
   };
   return receipt;
 }

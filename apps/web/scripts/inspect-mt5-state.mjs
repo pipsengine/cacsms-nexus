@@ -33,8 +33,11 @@ for (const moduleKey of keys) {
   }
   const state = row.state;
   if (state.instances) {
-    console.log("instances:", JSON.stringify(state.instances.map((i) => ({ id: i.id, account: i.accountLogin, terminal: i.terminalName })), null, 2));
+    console.log("instances:", JSON.stringify(state.instances.map((i) => ({ id: i.id, account: i.accountLogin, terminal: i.terminalName, tokenStatus: i.tokenStatus, tokenCreatedAt: i.tokenCreatedAt })), null, 2));
     console.log("credential keys:", Object.keys(state.issuedCredentialSecrets ?? {}));
+    for (const [key, creds] of Object.entries(state.issuedCredentialSecrets ?? {})) {
+      console.log(`  ${key}: hash=${String(creds.ingestionTokenHash ?? "").slice(0, 12)}… hint=${JSON.stringify(creds.ingestionTokenHint ?? null)}`);
+    }
   }
   if (state.terminals) {
     console.log("terminals:", JSON.stringify(state.terminals.map((t) => ({ id: t.id, uuid: t.terminalUuid, name: t.terminalName, account: t.accountLogin })), null, 2));
