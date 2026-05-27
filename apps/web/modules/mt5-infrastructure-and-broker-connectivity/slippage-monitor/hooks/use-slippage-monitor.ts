@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { mt5RealtimeQueryOptions } from "@/lib/mt5-realtime";
 
 import {
   autoRemediate,
@@ -46,8 +47,8 @@ export function useSlippageMonitor() {
     return () => source.close();
   }, [client]);
 
-  const summary = useQuery({ queryKey: ["slippage-monitor", "summary"], queryFn: fetchSlippageSummary, staleTime: 5_000, refetchInterval: 12_000, retry: 1 });
-  const workflow = useQuery({ queryKey: ["slippage-monitor", "workflow"], queryFn: fetchWorkflow, staleTime: 10_000, refetchInterval: 20_000, retry: 1 });
+  const summary = useQuery({ queryKey: ["slippage-monitor", "summary"], queryFn: fetchSlippageSummary, ...mt5RealtimeQueryOptions, retry: 1 });
+  const workflow = useQuery({ queryKey: ["slippage-monitor", "workflow"], queryFn: fetchWorkflow, ...mt5RealtimeQueryOptions, retry: 1 });
   const executions = useQuery({
     queryKey: ["slippage-monitor", "executions", { searchTerm, assetFilter, breachFilter, brokerFilter }],
     queryFn: () =>
@@ -59,8 +60,7 @@ export function useSlippageMonitor() {
         page: 1,
         pageSize: 75
       }),
-    staleTime: 4_000,
-    refetchInterval: 8_000,
+    ...mt5RealtimeQueryOptions,
     retry: 1
   });
 
@@ -72,18 +72,17 @@ export function useSlippageMonitor() {
     retry: 1
   });
 
-  const brokerComparison = useQuery({ queryKey: ["slippage-monitor", "broker-comparison"], queryFn: fetchBrokerComparison, staleTime: 10_000, refetchInterval: 25_000, retry: 1 });
-  const trends = useQuery({ queryKey: ["slippage-monitor", "trends"], queryFn: fetchTrends, staleTime: 10_000, refetchInterval: 25_000, retry: 1 });
-  const thresholds = useQuery({ queryKey: ["slippage-monitor", "thresholds"], queryFn: fetchThresholds, staleTime: 15_000, refetchInterval: 30_000, retry: 1 });
+  const brokerComparison = useQuery({ queryKey: ["slippage-monitor", "broker-comparison"], queryFn: fetchBrokerComparison, ...mt5RealtimeQueryOptions, retry: 1 });
+  const trends = useQuery({ queryKey: ["slippage-monitor", "trends"], queryFn: fetchTrends, ...mt5RealtimeQueryOptions, retry: 1 });
+  const thresholds = useQuery({ queryKey: ["slippage-monitor", "thresholds"], queryFn: fetchThresholds, staleTime: 15_000, refetchInterval: 10_000, retry: 1 });
   const alerts = useQuery({
     queryKey: ["slippage-monitor", "alerts", alertFilter],
     queryFn: () => fetchAlerts(alertFilter === "All" ? undefined : alertFilter === "Unresolved" ? "unresolved" : alertFilter === "Resolved" ? "resolved" : alertFilter.toLowerCase()),
-    staleTime: 6_000,
-    refetchInterval: 12_000,
+    ...mt5RealtimeQueryOptions,
     retry: 1
   });
-  const logs = useQuery({ queryKey: ["slippage-monitor", "logs"], queryFn: () => fetchLogs(), staleTime: 10_000, refetchInterval: 20_000, retry: 1 });
-  const diagnostics = useQuery({ queryKey: ["slippage-monitor", "ai-diagnostics"], queryFn: fetchAiDiagnostics, staleTime: 10_000, refetchInterval: 25_000, retry: 1 });
+  const logs = useQuery({ queryKey: ["slippage-monitor", "logs"], queryFn: () => fetchLogs(), staleTime: 10_000, refetchInterval: 10_000, retry: 1 });
+  const diagnostics = useQuery({ queryKey: ["slippage-monitor", "ai-diagnostics"], queryFn: fetchAiDiagnostics, ...mt5RealtimeQueryOptions, retry: 1 });
 
   const invalidate = async () => {
     await client.invalidateQueries({ queryKey: ["slippage-monitor"] });

@@ -11,6 +11,8 @@ import type {
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/chart-control/types/chart-control.types";
 import { resolveMt5Role } from "../../_lib/access";
 import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
+import { ingestLiveQuoteFromHeartbeat } from "./ingest-quotes";
+import type { LiveQuoteInput } from "../../_lib/quote-ingest-shared";
 
 type ChartControlState = {
   instruments: ChartInstrument[];
@@ -80,6 +82,10 @@ export function refreshCharts(role: Mt5Role, confirmed: boolean, request?: Reque
   return state.instruments;
 }
 
+export function ingestHeartbeatQuote(input: LiveQuoteInput) {
+  return ingestLiveQuoteFromHeartbeat(state, input);
+}
+
 export function changeTimeframe(id: string, timeframe: Timeframe, role: Mt5Role, confirmed: boolean, request?: Request) {
   authorize(role, "configure"); confirm(confirmed);
   const item = instrument(id);
@@ -113,7 +119,8 @@ export function applyLayout(id: string, role: Mt5Role, confirmed: boolean, reque
 export function captureSnapshot(id: string, note: string, role: Mt5Role, confirmed: boolean, request?: Request) {
   authorize(role, "snapshot"); confirm(confirmed);
   const item = instrument(id);
-  const layout = state.layouts.find((entry) => entry.active)!;
+  const layout = state.layouts.find((entry) => entry.active);
+  if (!layout) throw new Error("No active chart layout is configured.");
   const snapshot = { id: `snapshot-${Date.now()}`, symbol: item.symbol, timeframe: item.timeframe, layoutName: layout.name, capturedBy: role, capturedAt: new Date().toISOString(), note: note || "Operator chart state captured." };
   state.snapshots.unshift(snapshot);
   audit(role, "Chart snapshot captured", id, null, snapshot, request);
@@ -124,14 +131,14 @@ export function buildChartControlResponse(role: Mt5Role = "Infrastructure Admin"
   const now = new Date().toISOString();
   const analysisByInstrument = Object.fromEntries(state.instruments.map((item) => [item.id, analyzeChart(item)]));
   const workspaceHealth = calculateWorkspaceHealth(state.instruments);
-  const activeLayout = state.layouts.find((layout) => layout.active)!;
+  const activeLayout = state.layouts.find((layout) => layout.active);
   const offline = state.instruments.filter((item) => item.feedStatus === "Offline").length;
   const bullish = Object.values(analysisByInstrument).filter((analysis) => analysis.trend === "Bullish").length;
   return {
     meta: { timestamp: now, currentRole: role, streamEndpoint: "/api/mt5/chart-control/events-stream", monitoringMode: "Autonomous Chart Surveillance" },
     kpis: [
-      { label: "Active Layout", value: activeLayout.name, status: "Healthy", detail: `${activeLayout.slots} chart panels` },
-      { label: "Charts Online", value: `${state.instruments.length - offline}/${state.instruments.length}`, status: offline ? "Degraded" : "Healthy", detail: "Streaming chart feeds" },
+      { label: "Active Layout", value: activeLayout?.name ?? "None", status: activeLayout ? "Healthy" : "Pending", detail: activeLayout ? `${activeLayout.slots} chart panels` : "Awaiting workspace layout" },
+      { label: "Charts Online", value: state.instruments.length ? `${state.instruments.length - offline}/${state.instruments.length}` : "0/0", status: offline ? "Degraded" : state.instruments.length ? "Healthy" : "Pending", detail: state.instruments.length ? "Streaming chart feeds" : "Awaiting live chart feeds" },
       { label: "Visible Indicators", value: String(new Set(state.instruments.flatMap((item) => item.visibleIndicators)).size), status: "Healthy", detail: "Overlay library active" },
       { label: "Active Signals", value: String(state.signals.length), status: state.signals.some((signal) => signal.severity === "Critical") ? "Critical" : "Watch", detail: "AI chart events" },
       { label: "Bullish Trends", value: String(bullish), status: "Healthy", detail: "Selected workspaces" },

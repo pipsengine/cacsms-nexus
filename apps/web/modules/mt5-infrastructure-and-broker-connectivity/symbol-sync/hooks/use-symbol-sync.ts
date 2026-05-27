@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { mt5RealtimeQueryOptions } from "@/lib/mt5-realtime";
 import { fetchSymbolSync, runSymbolSyncAction } from "../services/symbol-sync.service";
 import type { SymbolSyncResponse } from "../types/symbol-sync.types";
 
 export function useSymbolSync() {
   const client = useQueryClient();
   const [streamConnected, setStreamConnected] = useState(false);
-  const query = useQuery({ queryKey: ["symbol-sync"], queryFn: fetchSymbolSync, staleTime: 4_000, refetchInterval: 30_000 });
+  const query = useQuery({ queryKey: ["symbol-sync"], queryFn: fetchSymbolSync, ...mt5RealtimeQueryOptions });
   useEffect(() => {
     const source = new EventSource("/api/mt5/symbol-sync/events-stream");
     source.addEventListener("symbol-snapshot", (event) => {

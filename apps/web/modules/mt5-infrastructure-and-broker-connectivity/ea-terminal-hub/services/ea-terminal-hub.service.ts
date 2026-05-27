@@ -19,14 +19,26 @@ export async function fetchEaTerminalHub(): Promise<EaTerminalHubResponse> {
 }
 
 export async function runEaTerminalHubAction(path: string, body?: Record<string, unknown>): Promise<ActionResponse> {
-  const response = await fetch(`${BASE}/${path}`, {
-    method: "POST",
-    headers: roleHeaders(),
-    body: JSON.stringify({ confirmed: true, ...body })
-  });
-  const payload = (await response.json().catch(() => ({}))) as ActionResponse & { error?: string };
-  if (!response.ok) throw new Error(payload.error ?? `EA terminal hub action failed (${path}).`);
-  return payload;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000);
+  try {
+    const response = await fetch(`${BASE}/${path}`, {
+      method: "POST",
+      headers: roleHeaders(),
+      body: JSON.stringify({ confirmed: true, ...body }),
+      signal: controller.signal
+    });
+    const payload = (await response.json().catch(() => ({}))) as ActionResponse & { error?: string };
+    if (!response.ok) throw new Error(payload.error ?? `EA terminal hub action failed (${path}).`);
+    return payload;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Request timed out after 20 seconds. Check the server terminal log and try again.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export function connectTerminals(payload: ConnectTerminalsRequest) {

@@ -13,6 +13,7 @@ import type {
 import type { TerminalPendingOrderUpdatePayload, TerminalPositionUpdatePayload } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-bridge/types/ea-bridge.types";
 import { resolveMt5Role } from "../../_lib/access";
 import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
+import type { AutonomousPipelineSource } from "../../_lib/autonomous-orchestrator";
 
 type AccountSyncState = {
   accounts: SyncedAccount[];
@@ -176,9 +177,10 @@ export function syncAccount(id: string, role: Mt5Role, confirmed: boolean, reque
   return item;
 }
 export function syncAllAccounts(role: Mt5Role, confirmed: boolean, request?: Request) {
-  authorize(role, "sync"); confirm(confirmed);
+  authorize(role, "sync");
+  if (confirmed === false) confirm(confirmed);
   state.accounts.forEach((item) => syncAccount(item.id, role, true, request));
-  state.lastSyncAt = new Date().toISOString();
+  autonomousReconcileAccounts("account-snapshot");
   audit(role, "All accounts synchronized", "all-accounts", null, { count: state.accounts.length }, request);
   return accounts();
 }
@@ -216,10 +218,24 @@ export function reconcileAccount(id: string, role: Mt5Role, confirmed: boolean, 
   return record;
 }
 export function reconcileAll(role: Mt5Role, confirmed: boolean, request?: Request) {
-  authorize(role, "reconcile"); confirm(confirmed);
-  const result = state.accounts.map((item) => reconcileAccount(item.id, role, true, request));
-  audit(role, "All account balances reconciled", "all-accounts", null, { count: result.length }, request);
-  return result;
+  authorize(role, "reconcile");
+  if (confirmed === false) confirm(confirmed);
+  autonomousReconcileAccounts("account-snapshot");
+  audit(role, "All account balances reconciled", "all-accounts", null, { count: state.accounts.length }, request);
+  return state.reconciliations;
+}
+
+export function autonomousReconcileAccounts(_source: AutonomousPipelineSource) {
+  state.accounts.forEach((item) => {
+    const record = reconciliationByAccount(item.id);
+    const result = classifyReconciliation(record);
+    record.reconciliationStatus = result.status;
+    record.requiredAction = result.action;
+    record.reconciledBy = "autonomous-sync";
+    record.reconciledAt = new Date().toISOString();
+  });
+  state.lastSyncAt = new Date().toISOString();
+  return accounts();
 }
 export function setAccountTrading(id: string, enabled: boolean, role: Mt5Role, confirmed: boolean, request?: Request) {
   authorize(role, "tradeControl"); confirm(confirmed);

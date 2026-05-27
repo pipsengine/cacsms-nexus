@@ -3,6 +3,10 @@ import { calculateSymbolHealth, classifyFeed, detectSymbolIssues, normalizeBroke
 import type { SyncedSymbol, SymbolSyncResponse } from "@/modules/mt5-infrastructure-and-broker-connectivity/symbol-sync/types/symbol-sync.types";
 import { resolveMt5Role } from "../../_lib/access";
 import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
+import { instruments as marketWatchInstruments } from "../../market-watch/_lib/store";
+import { ingestLiveQuoteFromHeartbeat } from "./ingest-quotes";
+import type { LiveQuoteInput } from "../../_lib/quote-ingest-shared";
+import type { AutonomousPipelineSource } from "../../_lib/autonomous-orchestrator";
 
 const state = bindPersistedMt5State("symbol-sync", () => ({
   symbols: [] as SyncedSymbol[],
@@ -61,20 +65,12 @@ export function diagnostics() { return state.diagnostics; }
 export function audits() { return state.audits; }
 
 export function syncAllSymbols(role: Mt5Role, confirmed: boolean, request?: Request) {
-  authorize(role, "sync"); confirm(confirmed);
+  authorize(role, "sync");
+  if (confirmed === false) confirm(confirmed);
   const oldIssues = issues();
-  state.symbols.forEach((item) => {
-    const normalized = normalizeBrokerSymbol(item.brokerSymbol);
-    if (normalized.known) {
-      item.normalizedSymbol = normalized.normalizedSymbol;
-      item.assetClass = normalized.assetClass;
-    }
-    item.lastSyncAt = new Date().toISOString();
-    item.mappingStatus = normalized.known && item.dataFeedActive ? "Healthy" : "Critical";
-  });
-  state.lastSyncAt = new Date().toISOString();
-  audit(role, "All symbols synchronized", "all-symbols", { issues: oldIssues.length }, { issues: issues().length, count: state.symbols.length }, request);
-  return symbols();
+  const synced = autonomousSyncSymbols("heartbeat");
+  audit(role, "All symbols synchronized", "all-symbols", { issues: oldIssues.length }, { issues: issues().length, count: synced.length }, request);
+  return synced;
 }
 export function validateMapping(id: string, role: Mt5Role, confirmed: boolean, request?: Request) {
   authorize(role, "validate"); confirm(confirmed);
@@ -130,6 +126,57 @@ export function normalizeRequestedSymbols(raw: string[]) {
   return raw.map((brokerSymbol) => ({ brokerSymbol, ...normalizeBrokerSymbol(brokerSymbol) }));
 }
 
+export function ingestHeartbeatQuote(input: LiveQuoteInput) {
+  const symbol = ingestLiveQuoteFromHeartbeat(state, input);
+  if (symbol) autonomousValidateSymbol(symbol);
+  return symbol;
+}
+
+function autonomousValidateSymbol(item: SyncedSymbol) {
+  const normalized = normalizeBrokerSymbol(item.brokerSymbol);
+  if (normalized.known && normalized.normalizedSymbol !== item.normalizedSymbol) {
+    item.normalizedSymbol = normalized.normalizedSymbol;
+    item.assetClass = normalized.assetClass;
+    item.mismatchReason = undefined;
+  }
+  item.mappingStatus = normalized.known && item.dataFeedActive ? "Healthy" : "Critical";
+  item.lastSyncAt = new Date().toISOString();
+  item.feedStatus = classifyFeed(item);
+  item.riskLevel =
+    item.mappingStatus === "Critical" || item.feedStatus === "Offline"
+      ? "Critical"
+      : item.feedStatus === "Degraded" || item.spread > item.rollingSpread * 2
+        ? "Degraded"
+        : "Healthy";
+}
+
+export function autonomousSyncSymbols(_source: AutonomousPipelineSource, quote?: LiveQuoteInput) {
+  if (!state.symbols.length && quote?.symbol) {
+    ingestLiveQuoteFromHeartbeat(state, quote);
+  }
+  if (!state.symbols.length) {
+    marketWatchInstruments().forEach((instrument) => {
+      ingestLiveQuoteFromHeartbeat(state, {
+        brokerId: `broker-${instrument.brokerName}`.toLowerCase().replace(/\s+/g, "-"),
+        brokerName: instrument.brokerName,
+        accountId: "autonomous",
+        accountLogin: "autonomous",
+        serverName: instrument.brokerName,
+        symbol: instrument.symbol,
+        bid: instrument.bid,
+        ask: instrument.ask,
+        marketDataActive: instrument.feedActive,
+        tradingEnabled: instrument.tradeEnabled,
+        latencyMs: instrument.latencyMs,
+        receivedAt: instrument.lastTickAt
+      });
+    });
+  }
+  state.symbols.forEach((item) => autonomousValidateSymbol(item));
+  state.lastSyncAt = new Date().toISOString();
+  return symbols();
+}
+
 export function buildSymbolSyncResponse(role: Mt5Role = "Infrastructure Admin"): SymbolSyncResponse {
   const items = symbols();
   const currentIssues = issues();
@@ -154,7 +201,7 @@ export function buildSymbolSyncResponse(role: Mt5Role = "Infrastructure Admin"):
       { label: "Symbol Health Score", value: `${health.score}/100`, status: health.score >= 75 ? "Healthy" : health.score >= 60 ? "Degraded" : "Critical", detail: health.rating, updatedAt: now }
     ],
     health,
-    workflow: workflowTitles.map((title, index) => ({ title, status: index >= 3 && critical ? "Critical" : index >= 5 && currentIssues.length ? "Degraded" : "Healthy", symbolCount: items.length - (index >= 3 ? critical : 0), failureCount: index >= 3 ? critical : 0, averageDelayMs: Math.round(items.reduce((sum, item) => sum + item.tickDelaySeconds * 1000, 0) / items.length), lastCheckedAt: now, aiRecommendation: title === "Registry Match" && critical ? "Correct unresolved symbol identity before execution." : title === "Tick Feed Active" && critical ? "Recover offline feed and retain the trading block." : undefined })),
+    workflow: workflowTitles.map((title, index) => ({ title, status: index >= 3 && critical ? "Critical" : index >= 5 && currentIssues.length ? "Degraded" : "Healthy", symbolCount: items.length - (index >= 3 ? critical : 0), failureCount: index >= 3 ? critical : 0, averageDelayMs: items.length ? Math.round(items.reduce((sum, item) => sum + item.tickDelaySeconds * 1000, 0) / items.length) : 0, lastCheckedAt: now, aiRecommendation: title === "Registry Match" && critical ? "Correct unresolved symbol identity before execution." : title === "Tick Feed Active" && critical ? "Recover offline feed and retain the trading block." : undefined })),
     symbols: items,
     issues: currentIssues,
     feedMetrics: items.map((item) => ({ id: item.id, brokerName: item.brokerName, normalizedSymbol: item.normalizedSymbol, tickDelaySeconds: item.tickDelaySeconds, spread: item.spread, rollingSpread: item.rollingSpread, gapCount: item.gapCount, feedStatus: item.feedStatus, lastTickAt: item.lastTickAt })),

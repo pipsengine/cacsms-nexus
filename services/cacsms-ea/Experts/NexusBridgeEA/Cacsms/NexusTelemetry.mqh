@@ -70,7 +70,15 @@ bool NexusSendHeartbeat()
       "\",\"brokerConnected\":" + NexusBoolJson((bool)TerminalInfoInteger(TERMINAL_CONNECTED)) +
       ",\"marketDataActive\":" + NexusBoolJson(has_tick) +
       ",\"tradingEnabled\":" + NexusBoolJson((bool)AccountInfoInteger(ACCOUNT_TRADE_ALLOWED)) +
-      ",\"latencyMs\":" + IntegerToString(NexusTerminalLatencyMs()) + "}";
+      ",\"latencyMs\":" + IntegerToString(NexusTerminalLatencyMs());
+   if(has_tick)
+   {
+      const int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
+      payload += ",\"quoteSymbol\":\"" + NexusJsonEscape(_Symbol) +
+         "\",\"bid\":" + NexusNumberJson(tick.bid, digits) +
+         ",\"ask\":" + NexusNumberJson(tick.ask, digits);
+   }
+   payload += "}";
    string response;
    bool ok = NexusSendSignedEnvelope("Heartbeat", payload, response);
    if(ok)

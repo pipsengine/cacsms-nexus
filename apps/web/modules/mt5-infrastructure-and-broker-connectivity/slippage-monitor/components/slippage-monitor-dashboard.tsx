@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { SLIPPAGE_AUTONOMOUS_NOTICE } from "@/lib/mt5-autonomous";
 import { useSlippageMonitor } from "../hooks/use-slippage-monitor";
 import { useSlippageMonitorStore } from "../stores/slippage-monitor.store";
 import type { AiSlippageDiagnostic, BrokerSlippageComparisonRow, SlippageAlert, SlippageExecution, SlippageThreshold, SlippageTrendPoint, SlippageWorkflowNode } from "../types/slippage-monitor.types";
@@ -381,6 +382,26 @@ export function SlippageMonitorDashboard() {
     </Badge>
   ) : null;
 
+  if (summary.isError || executions.isError) {
+    return (
+      <div className="mx-auto max-w-[1800px] px-4 py-6">
+        <Card className="border-red-200 p-6">
+          <h1 className="text-xl font-semibold">Slippage Monitor unavailable</h1>
+          <p className="mt-2 text-sm text-slate-600">Execution slippage telemetry could not be loaded.</p>
+          <Button className="mt-4" onClick={refresh}>
+            Retry
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
+  if (summary.isLoading && !summary.data) {
+    return <div className="mx-auto max-w-[1800px] px-4 py-6 text-sm text-slate-600">Loading slippage monitor telemetry...</div>;
+  }
+
+  const hasExecutions = execRows.length > 0;
+
   return (
     <div className="mx-auto flex w-full max-w-[1800px] flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
       <section className="rounded-2xl border border-slate-200 bg-white shadow-card">
@@ -399,6 +420,7 @@ export function SlippageMonitorDashboard() {
               <p className="mt-2 max-w-5xl text-sm font-semibold text-slate-700 sm:text-base">
                 Real-time slippage intelligence, execution quality monitoring, broker comparison, and slippage-based trade safety control.
               </p>
+              <p className="mt-3 text-xs text-slate-500">{SLIPPAGE_AUTONOMOUS_NOTICE}</p>
 
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <span className="text-xs font-semibold uppercase text-slate-500">Role</span>
@@ -419,10 +441,6 @@ export function SlippageMonitorDashboard() {
                 <Button onClick={refresh} disabled={!can(role, "refresh")}>
                   <RefreshCw className="h-4 w-4" />
                   Refresh Slippage
-                </Button>
-                <Button variant="secondary" onClick={refresh} disabled={!can(role, "refresh")}>
-                  <RefreshCw className="h-4 w-4" />
-                  Sync Execution Data
                 </Button>
                 <Button onClick={() => actions.runSlippageDiagnostics.mutate()} disabled={!can(role, "diagnostics")}>
                   <Wrench className="h-4 w-4" />
@@ -481,6 +499,19 @@ export function SlippageMonitorDashboard() {
           </Card>
         ))}
       </section>
+
+      {!hasExecutions ? (
+        <Card className="border-blue-200 bg-blue-50/40">
+          <CardContent className="p-6 text-sm text-slate-700">
+            <p className="font-semibold text-slate-900">Waiting for live executions</p>
+            <p className="mt-2">{SLIPPAGE_AUTONOMOUS_NOTICE}</p>
+            <p className="mt-2">
+              When NexusBridgeEA confirms a routed trade (for example on GBPUSD), slippage metrics, broker comparison, and threshold checks populate here automatically.
+              Ensure <code className="rounded bg-white px-1">PollApprovedCommands</code> and <code className="rounded bg-white px-1">EnableCommandExecution</code> are enabled on the EA.
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <section className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">

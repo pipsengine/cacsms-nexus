@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { failure, ok } from "../../_lib/http";
+import { mt5StreamIntervalMs } from "../../_lib/realtime-stream";
 import {
   buildEaTerminalHubResponse,
   connectTerminals,
@@ -10,6 +11,7 @@ import {
   previewTerminalSync,
   registerTerminal,
   scanFolders,
+  sendTestOrderToTerminal,
   setActiveTerminal,
   summary,
   syncAllTerminalFolders,
@@ -37,7 +39,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ slu
             });
           };
           send();
-          const interval = setInterval(send, 8000);
+          const interval = setInterval(send, mt5StreamIntervalMs());
           request.signal.addEventListener("abort", () => {
             clearInterval(interval);
             controller.close();
@@ -123,6 +125,22 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
           role,
           request
         )
+      );
+    }
+    if (slug[0] === "send-test-order") {
+      return ok(
+        await sendTestOrderToTerminal(
+          {
+            terminalId: String(body.terminalId ?? ""),
+            symbol: String(body.symbol ?? ""),
+            volume: Number(body.volume),
+            direction: body.direction === "Sell" ? "Sell" : "Buy",
+            confirmed: Boolean(body.confirmed)
+          },
+          role,
+          request
+        ),
+        202
       );
     }
     notFound();

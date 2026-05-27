@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { mt5RealtimeQueryOptions } from "@/lib/mt5-realtime";
 import { fetchOrderRouter, runRouterAction } from "../services/order-router.service";
 import type { RouterResponse } from "../types/order-router.types";
 
 export function useOrderRouter() {
   const client = useQueryClient();
   const [streamConnected, setStreamConnected] = useState(false);
-  const query = useQuery({ queryKey: ["order-router"], queryFn: fetchOrderRouter, staleTime: 4_000, refetchInterval: 30_000 });
+  const query = useQuery({ queryKey: ["order-router"], queryFn: fetchOrderRouter, ...mt5RealtimeQueryOptions });
   useEffect(() => {
     const source = new EventSource("/api/mt5/order-router/events-stream");
     source.addEventListener("router-snapshot", (event) => {

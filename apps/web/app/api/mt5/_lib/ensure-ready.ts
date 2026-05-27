@@ -32,7 +32,7 @@ export async function withMt5Module<T>(moduleKey: Mt5ModuleKey, handler: () => P
   try {
     return await handler();
   } finally {
-    await flushMt5ModulePersistence();
+    await flushMt5ModulePersistence([moduleKey]);
   }
 }
 
@@ -45,6 +45,6 @@ export async function withMt5Modules<T>(moduleKeys: readonly Mt5ModuleKey[], han
   try {
     return await handler();
   } finally {
-    await flushMt5ModulePersistence();
+    await flushMt5ModulePersistence(moduleKeys);
   }
 }

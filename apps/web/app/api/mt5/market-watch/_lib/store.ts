@@ -3,6 +3,7 @@ import { calculateMarketHealth, dailyMovePercent, detectMarketAlerts, quoteStatu
 import type { MarketInstrument, MarketWatchResponse } from "@/modules/mt5-infrastructure-and-broker-connectivity/market-watch/types/market-watch.types";
 import { resolveMt5Role } from "../../_lib/access";
 import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
+import { ingestLiveQuoteFromHeartbeat } from "./ingest-quotes";
 
 const state = bindPersistedMt5State("market-watch", () => ({
   instruments: [] as MarketInstrument[],
@@ -79,6 +80,21 @@ export function runMarketDiagnostics(role: Mt5Role, confirmed: boolean, request?
   return { completedAt: new Date().toISOString(), alerts, diagnostics: state.diagnostics };
 }
 
+export function ingestHeartbeatQuote(input: {
+  brokerName: string;
+  symbol?: string;
+  bid?: number;
+  ask?: number;
+  marketDataActive: boolean;
+  latencyMs: number;
+  receivedAt?: string;
+}) {
+  return ingestLiveQuoteFromHeartbeat(state, {
+    ...input,
+    receivedAt: input.receivedAt ?? new Date().toISOString()
+  });
+}
+
 export function buildMarketWatchResponse(role: Mt5Role = "Infrastructure Admin"): MarketWatchResponse {
   const items = instruments();
   const alerts = detectMarketAlerts(items);
@@ -87,7 +103,12 @@ export function buildMarketWatchResponse(role: Mt5Role = "Infrastructure Admin")
   const critical = alerts.filter((alert) => alert.severity === "Critical").length;
   const watchlist = items.filter((instrument) => instrument.watchlisted);
   const spreadExceptions = items.filter((instrument) => spreadPoints(instrument) > instrument.spreadBaselinePoints * 2);
-  const freshestAge = Math.max(...items.filter((instrument) => instrument.feedActive).map((instrument) => Date.now() - new Date(instrument.lastTickAt).getTime()));
+  const activeItems = items.filter((instrument) => instrument.feedActive);
+  const freshestAge = activeItems.length
+    ? Math.max(...activeItems.map((instrument) => Date.now() - new Date(instrument.lastTickAt).getTime()))
+    : 0;
+  const topMover = topMarketMovers(items, 1)[0];
+  const fastestLatency = items.length ? Math.min(...items.map((item) => item.latencyMs)) : 0;
   return {
     meta: { timestamp: now, currentRole: role, streamEndpoint: "/api/mt5/market-watch/events-stream", monitoringMode: "Autonomous Quote Surveillance" },
     kpis: [
@@ -95,10 +116,10 @@ export function buildMarketWatchResponse(role: Mt5Role = "Infrastructure Admin")
       { label: "Watchlist", value: String(watchlist.length), status: "Healthy", detail: "Priority instruments" },
       { label: "Feed Alerts", value: String(alerts.filter((alert) => alert.alertType === "Feed Offline" || alert.alertType === "Stale Quote").length), status: critical ? "Critical" : "Healthy", detail: "Freshness surveillance" },
       { label: "Spread Exceptions", value: String(spreadExceptions.length), status: spreadExceptions.length ? "Degraded" : "Healthy", detail: "Above liquidity baseline" },
-      { label: "Largest Move", value: `${topMarketMovers(items, 1)[0].symbol} ${dailyMovePercent(topMarketMovers(items, 1)[0])}%`, status: "Watch", detail: "Absolute daily change" },
+      { label: "Largest Move", value: topMover ? `${topMover.symbol} ${dailyMovePercent(topMover)}%` : "None", status: topMover ? "Watch" : "Pending", detail: topMover ? "Absolute daily change" : "Awaiting live ticks" },
       { label: "Quote Health", value: `${health.score}/100`, status: health.score >= 75 ? "Healthy" : "Degraded", detail: health.rating },
-      { label: "Fastest Latency", value: `${Math.min(...items.map((item) => item.latencyMs))} ms`, status: "Healthy", detail: "Broker delivery path" },
-      { label: "Last Active Tick", value: `${Math.round(freshestAge / 1000)} sec`, status: freshestAge > 15_000 ? "Degraded" : "Healthy", detail: "Oldest live-feed tick" }
+      { label: "Fastest Latency", value: items.length ? `${fastestLatency} ms` : "None", status: items.length ? "Healthy" : "Pending", detail: "Broker delivery path" },
+      { label: "Last Active Tick", value: activeItems.length ? `${Math.round(freshestAge / 1000)} sec` : "None", status: freshestAge > 15_000 ? "Degraded" : activeItems.length ? "Healthy" : "Pending", detail: activeItems.length ? "Oldest live-feed tick" : "Awaiting EA heartbeat quotes" }
     ],
     instruments: items,
     alerts,

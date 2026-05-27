@@ -22,6 +22,8 @@ import type {
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-terminal-hub/types/ea-terminal-hub.types";
 import { resolveMt5Role } from "../../_lib/access";
 import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
+import { buildTestOrderRoute, buildTradeCommandFromRoute } from "../../_lib/ea-command-dispatch";
+import { bridgeInstance, queueTradeCommand, setBridgeTrading } from "../../ea-bridge/_lib/store";
 
 import {
   applyLiveStateToTerminals,
@@ -62,7 +64,8 @@ const permissions: Record<string, Mt5Role[]> = {
   setActive: ["Super Admin", "Infrastructure Admin", "Trading Admin", "Analyst"],
   syncAll: ["Super Admin", "Infrastructure Admin"],
   register: ["Super Admin", "Infrastructure Admin", "Trading Admin"],
-  previewSync: ["Super Admin", "Infrastructure Admin", "Trading Admin", "Analyst"]
+  previewSync: ["Super Admin", "Infrastructure Admin", "Trading Admin", "Analyst"],
+  sendTestOrder: ["Super Admin", "Infrastructure Admin", "Trading Admin"]
 };
 
 export function eaTerminalHubRole(request?: Request): Mt5Role {
@@ -89,7 +92,8 @@ function buildPermissions(role: Mt5Role): EaTerminalHubPermissions {
     canSyncAll: permissions.syncAll.includes(role),
     canSetActive: permissions.setActive.includes(role),
     canRegister: permissions.register.includes(role),
-    canPreviewSync: permissions.previewSync.includes(role)
+    canPreviewSync: permissions.previewSync.includes(role),
+    canSendTestOrder: permissions.sendTestOrder.includes(role)
   };
 }
 
@@ -189,11 +193,19 @@ function activeTerminal() {
 
 export async function buildEaTerminalHubResponse(role: Mt5Role): Promise<EaTerminalHubResponse> {
   hydrateTerminalProfiles();
-  await refreshSystemFolder();
-  for (const terminal of state.terminals) {
-    await refreshTerminalLink(terminal);
+  if (!state.systemFolder) {
+    await refreshSystemFolder();
   }
-  await refreshAllDrift();
+  if (state.activeTerminalId) {
+    try {
+      await refreshTerminalLink(terminalById(state.activeTerminalId));
+      await refreshAllDrift(state.activeTerminalId);
+    } catch {
+      state.drift = [];
+    }
+  } else {
+    state.drift = [];
+  }
   state.lastUpdatedAt = new Date().toISOString();
   const terminals = applyLiveStateToTerminals(state.terminals);
   const focused = activeTerminal();
@@ -503,4 +515,56 @@ export function toggleAutoLink(terminalId: string, enabled: boolean, role: Mt5Ro
     terminal: mergeTerminalLiveState(terminal),
     summary: buildSummary()
   } satisfies ActionResponse;
+}
+
+export async function sendTestOrderToTerminal(
+  payload: {
+    terminalId: string;
+    symbol: string;
+    volume: number;
+    direction?: "Buy" | "Sell";
+    confirmed?: boolean;
+  },
+  role: Mt5Role,
+  request?: Request
+) {
+  authorize(role, "sendTestOrder");
+  confirm(payload.confirmed);
+  const terminal = mergeTerminalLiveState(terminalById(payload.terminalId));
+  if (!terminal.eaInstanceId) {
+    throw new Error("This terminal has no linked EA Bridge instance yet. Complete EA pairing and wait for a healthy heartbeat.");
+  }
+  if (terminal.bridgeHeartbeatStatus === "Critical" || terminal.connectionStatus === "Offline") {
+    throw new Error("EA Bridge is not ready on this terminal. Confirm NexusBridgeEA is attached, paired, and sending heartbeats.");
+  }
+
+  const instance = bridgeInstance(terminal.eaInstanceId);
+  const route = buildTestOrderRoute({
+    eaInstance: instance,
+    symbol: payload.symbol.trim(),
+    volume: payload.volume,
+    direction: payload.direction ?? "Buy"
+  });
+  const command = buildTradeCommandFromRoute(route);
+  setBridgeTrading(instance.id, true, role, true, request);
+  const result = queueTradeCommand(command, role, true, request);
+
+  audit(role, "Test order dispatched through EA bridge", terminal.terminalId, null, {
+    eaInstanceId: terminal.eaInstanceId,
+    symbol: payload.symbol,
+    volume: payload.volume,
+    commandUuid: command.commandUuid,
+    accepted: result.accepted
+  }, request);
+  state.lastUpdatedAt = new Date().toISOString();
+
+  return {
+    ok: Boolean(result.accepted),
+    message: result.accepted
+      ? `Test order queued as ${command.commandUuid}. The EA receives it on the next command poll (about 5 seconds). Execution requires PollApprovedCommands=true and EnableCommandExecution=true in NexusBridgeEA.`
+      : result.reason ?? "Test order was not accepted by the EA Bridge.",
+    commandUuid: command.commandUuid,
+    accepted: result.accepted,
+    summary: buildSummary()
+  } satisfies ActionResponse & { commandUuid?: string; accepted?: boolean };
 }

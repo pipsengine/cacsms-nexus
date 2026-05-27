@@ -93,6 +93,7 @@ export type EaTerminalHubPermissions = {
   canSetActive: boolean;
   canRegister: boolean;
   canPreviewSync: boolean;
+  canSendTestOrder: boolean;
 };
 
 export type EaTerminalHubSummary = {
@@ -136,6 +137,8 @@ export type LinkFolderRequest = {
 export type ActionResponse = {
   ok: boolean;
   message: string;
+  commandUuid?: string;
+  accepted?: boolean;
   terminal?: Mt5TerminalLink;
   terminals?: Mt5TerminalLink[];
   copiedFiles?: string[];

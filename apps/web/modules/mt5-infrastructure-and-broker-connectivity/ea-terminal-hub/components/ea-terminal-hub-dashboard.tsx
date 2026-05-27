@@ -12,6 +12,7 @@ import {
   PlugZap,
   RefreshCw,
   Search,
+  Send,
   Server,
   ShieldCheck,
   Unplug
@@ -47,6 +48,7 @@ export function EaTerminalHubDashboard() {
   const ui = useEaTerminalHubStore();
   const { data, isLoading, isError, error, streamConnected, action, refetch } = useEaTerminalHub();
   const [notice, setNotice] = React.useState<string | null>(null);
+  const [sendingTestOrder, setSendingTestOrder] = React.useState(false);
   const [syncPreview, setSyncPreview] = React.useState<SyncPreviewItem[]>([]);
   const [registerDraft, setRegisterDraft] = React.useState({
     terminalName: "",
@@ -77,7 +79,62 @@ export function EaTerminalHubDashboard() {
   }, [data?.terminals, ui.searchTerm]);
 
   const activeTerminal = terminals.find((t) => t.terminalId === data?.summary.activeTerminalId) ?? terminals.find((t) => t.isActive);
+  const selectedTerminals = terminals.filter((terminal) => ui.selectedTerminalIds.includes(terminal.terminalId));
+  const targetTerminal =
+    selectedTerminals.length === 1
+      ? selectedTerminals[0]
+      : selectedTerminals.find((terminal) => terminal.eaInstanceId) ?? activeTerminal ?? terminals.find((terminal) => terminal.eaInstanceId);
   const permissions = data?.permissions;
+  const canSendTestOrder = Boolean(permissions?.canSendTestOrder && targetTerminal?.eaInstanceId);
+
+  async function sendTestOrder(terminalId?: string) {
+    const terminal =
+      (terminalId ? terminals.find((row) => row.terminalId === terminalId) : undefined) ?? targetTerminal ?? terminals[0];
+    if (!terminal) {
+      setNotice("Select a terminal in the table below before sending a test order.");
+      return;
+    }
+    if (!terminal.eaInstanceId) {
+      setNotice(
+        `${terminal.terminalName} has no EA Bridge instance yet. Complete EA pairing on EA Bridge, attach NexusBridgeEA, and wait for a healthy heartbeat.`
+      );
+      return;
+    }
+    const defaultSymbol = "EURUSD";
+    const symbol = window.prompt("Symbol (must exist in MT5 Market Watch):", defaultSymbol)?.trim() ?? "";
+    if (!symbol) return;
+    const volumeRaw = window.prompt("Lot size (volume):", "0.01")?.trim() ?? "";
+    const volume = Number.parseFloat(volumeRaw);
+    if (!Number.isFinite(volume) || volume <= 0) {
+      setNotice("Invalid volume.");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Send a test market order to ${terminal.terminalName}? The EA executes only when PollApprovedCommands and EnableCommandExecution are enabled in NexusBridgeEA inputs.`
+      )
+    ) {
+      return;
+    }
+    setNotice(null);
+    setSendingTestOrder(true);
+    try {
+      const result = await action.mutateAsync({
+        path: "send-test-order",
+        body: { confirmed: true, terminalId: terminal.terminalId, symbol, volume, direction: "Buy" }
+      });
+      setNotice(
+        result.commandUuid
+          ? `${result.message ?? "Test order queued."} Check EA Bridge → trade commands, or MT5 Experts log within ~5s.`
+          : result.message ?? "Test order queued."
+      );
+      void refetch();
+    } catch (commandError) {
+      setNotice(commandError instanceof Error ? commandError.message : "Failed to send test order.");
+    } finally {
+      setSendingTestOrder(false);
+    }
+  }
 
   async function command(label: string, path: string, body?: Record<string, unknown>) {
     if (!window.confirm(`Confirm ${label.toLowerCase()}? This action will be audit-logged.`)) return;
@@ -127,7 +184,9 @@ export function EaTerminalHubDashboard() {
               Link the canonical Cacsms EA folder to each MT5 terminal Experts directory, reconcile drift with content hashes, and manage multi-terminal bridge connectivity from one control surface.
             </p>
             <p className="mt-3 text-xs text-slate-500">
-              Role: {permissions?.role ?? ui.role} | Last update: {time(data.meta.timestamp)} | Active: {activeTerminal?.terminalName ?? "None"}
+              Role: {permissions?.role ?? ui.role} | Last update: {time(data.meta.timestamp)} | Target:{" "}
+              {targetTerminal?.terminalName ?? "Select a terminal below"}
+              {targetTerminal?.eaInstanceId ? ` · EA ${targetTerminal.eaInstanceId}` : ""}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -150,6 +209,19 @@ export function EaTerminalHubDashboard() {
             <Button variant="outline" size="sm" disabled={!permissions?.canScan || action.isPending} onClick={() => command("Scan folders", "scan")}>
               <RefreshCw className={cn("mr-2 h-4 w-4", action.isPending && "animate-spin")} />
               Scan folders
+            </Button>
+            <Button
+              size="sm"
+              disabled={!canSendTestOrder || sendingTestOrder}
+              onClick={() => sendTestOrder(targetTerminal?.terminalId)}
+              title={
+                canSendTestOrder
+                  ? `Queue a test order for ${targetTerminal?.terminalName}`
+                  : "Select one terminal with a linked EA Bridge instance (checkbox in the table)"
+              }
+            >
+              <Send className={cn("mr-2 h-4 w-4", sendingTestOrder && "animate-pulse")} />
+              {sendingTestOrder ? "Sending…" : "Send test order"}
             </Button>
           </div>
         </div>
@@ -232,6 +304,11 @@ export function EaTerminalHubDashboard() {
               ))}
             </div>
             <Separator />
+            <p className="rounded-lg border border-teal-100 bg-teal-50/60 p-3 text-xs leading-6 text-teal-900">
+              <strong>Test orders</strong> only need a live EA Bridge heartbeat (step 4). They do not require operator-managed terminals or linked Experts folders.
+              To deploy EA files, use <strong>Manage</strong> then <strong>Link EA</strong> with your MT5 AppData path.
+              After queuing an order, confirm in MT5 that <strong>PollApprovedCommands</strong> and <strong>EnableCommandExecution</strong> are enabled on NexusBridgeEA.
+            </p>
             <div className="space-y-2">
               {data.installChecklist.map((item) => (
                 <div key={item.step} className="flex items-start justify-between gap-3 rounded-lg bg-slate-50 p-3 text-sm">
@@ -268,6 +345,14 @@ export function EaTerminalHubDashboard() {
                   onChange={(event) => ui.setSearchTerm(event.target.value)}
                 />
               </div>
+              <Button
+                size="sm"
+                disabled={!canSendTestOrder || sendingTestOrder}
+                onClick={() => sendTestOrder(targetTerminal?.terminalId)}
+              >
+                <Send className={cn("mr-2 h-4 w-4", sendingTestOrder && "animate-pulse")} />
+                {sendingTestOrder ? "Sending…" : "Send test order"}
+              </Button>
               <Button
                 size="sm"
                 disabled={!permissions?.canConnect || !ui.selectedTerminalIds.length || action.isPending}
@@ -317,6 +402,7 @@ export function EaTerminalHubDashboard() {
                   permissions={permissions}
                   isActive={terminal.terminalId === data.summary.activeTerminalId}
                   isPending={action.isPending}
+                  sendingTestOrder={sendingTestOrder}
                   onToggle={() => ui.toggleTerminalSelection(terminal.terminalId)}
                   onActivate={() => command("Set active terminal", "set-active", { terminalId: terminal.terminalId })}
                   onConnect={() => command(`Manage ${terminal.terminalName}`, "connect", { terminalIds: [terminal.terminalId], autoLink: false })}
@@ -333,6 +419,7 @@ export function EaTerminalHubDashboard() {
                   }}
                   onPreview={() => command(`Preview sync for ${terminal.terminalName}`, "preview-sync", { terminalId: terminal.terminalId })}
                   onToggleAutoLink={(enabled) => command(`Update auto-link for ${terminal.terminalName}`, "toggle-auto-link", { terminalId: terminal.terminalId, enabled })}
+                  onSendTestOrder={() => sendTestOrder(terminal.terminalId)}
                 />
               ))}
             </tbody>
@@ -510,24 +597,28 @@ function TerminalRow({
   permissions,
   isActive,
   isPending,
+  sendingTestOrder,
   onToggle,
   onActivate,
   onConnect,
   onLink,
   onPreview,
-  onToggleAutoLink
+  onToggleAutoLink,
+  onSendTestOrder
 }: {
   terminal: Mt5TerminalLink;
   selected: boolean;
   permissions: ReturnType<typeof useEaTerminalHub>["data"] extends infer T ? (T extends { permissions: infer P } ? P : undefined) : undefined;
   isActive: boolean;
   isPending: boolean;
+  sendingTestOrder: boolean;
   onToggle: () => void;
   onActivate: () => void;
   onConnect: () => void;
   onLink: () => void;
   onPreview: () => void;
   onToggleAutoLink: (enabled: boolean) => void;
+  onSendTestOrder: () => void;
 }) {
   return (
     <tr className={cn("border-b border-slate-100", isActive && "bg-teal-50/40")}>
@@ -547,6 +638,7 @@ function TerminalRow({
       <td className="px-3 py-3">
         <Badge variant={toneVariant(terminal.connectionStatus)}>{terminal.connectionStatus}</Badge>
         {terminal.bridgeHeartbeatStatus ? <p className="mt-1 text-[10px] text-slate-500">{terminal.bridgeHeartbeatStatus}</p> : null}
+        {terminal.eaInstanceId ? <p className="mt-1 font-mono text-[10px] text-teal-700">{terminal.eaInstanceId}</p> : null}
       </td>
       <td className="px-3 py-3">
         <Badge variant={toneVariant(terminal.linkStatus)}>{terminal.linkStatus}</Badge>
@@ -568,6 +660,15 @@ function TerminalRow({
           </Button>
           <Button size="sm" variant="outline" disabled={!permissions?.canPreviewSync || isPending} onClick={onPreview}>
             Preview
+          </Button>
+          <Button
+            size="sm"
+            disabled={!permissions?.canSendTestOrder || !terminal.eaInstanceId || isPending || sendingTestOrder}
+            onClick={onSendTestOrder}
+            title={terminal.eaInstanceId ? "Queue test order via EA Bridge" : "EA Bridge instance not linked yet"}
+          >
+            <Send className="mr-1 h-3 w-3" />
+            Test order
           </Button>
           <Button
             size="sm"

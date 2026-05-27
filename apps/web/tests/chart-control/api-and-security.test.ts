@@ -1,6 +1,6 @@
 import {describe, expect, it, beforeEach } from "vitest";
 import { seedChartControlStore } from "@/tests/helpers/seed-api-stores";
-import { applyLayout, audits, buildChartControlResponse, captureSnapshot, changeTimeframe, chartRole, refreshCharts, toggleIndicator } from "@/app/api/mt5/chart-control/_lib/store";
+import { applyLayout, audits, buildChartControlResponse, captureSnapshot, changeTimeframe, chartRole, refreshCharts, resetChartControlState, toggleIndicator } from "@/app/api/mt5/chart-control/_lib/store";
 
 describe("Chart Control operational controls", () => {
   beforeEach(() => seedChartControlStore());
@@ -11,6 +11,14 @@ describe("Chart Control operational controls", () => {
     expect(response.layouts.some((layout) => layout.active)).toBe(true);
     expect(response.analysisByInstrument["chart-nas100"].status).toBe("Offline");
     expect(response.signals.length).toBeGreaterThan(0);
+  });
+
+  it("handles an empty workspace without throwing", () => {
+    resetChartControlState();
+    const response = buildChartControlResponse("Infrastructure Admin");
+    expect(response.kpis.find((kpi) => kpi.label === "Active Layout")?.value).toBe("None");
+    expect(response.instruments).toEqual([]);
+    expect(response.layouts).toEqual([]);
   });
 
   it("enforces role permissions and operator confirmation", () => {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { mt5RealtimeQueryOptions } from "@/lib/mt5-realtime";
 import { fetchMt5ControlCenter, runMt5Action } from "../services/mt5-control-center.service";
 import type { Broker, Mt5ControlCenterResponse, TerminalOnboardingReceipt } from "../types/mt5-control-center.types";
 
@@ -12,8 +13,7 @@ export function useMt5ControlCenter() {
   const query = useQuery({
     queryKey: ["mt5-control-center"],
     queryFn: fetchMt5ControlCenter,
-    refetchInterval: 30_000,
-    staleTime: 4_000
+    ...mt5RealtimeQueryOptions
   });
 
   useEffect(() => {

@@ -4,11 +4,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { SlippageMonitorDashboard } from "@/modules/mt5-infrastructure-and-broker-connectivity/slippage-monitor/components/slippage-monitor-dashboard";
 import { useSlippageMonitorStore } from "@/modules/mt5-infrastructure-and-broker-connectivity/slippage-monitor/stores/slippage-monitor.store";
-import { createSlippageMonitorSeed } from "@/tests/fixtures/slippage-monitor.fixture";
+import { createMockExecutions, createMockThresholds } from "@/tests/fixtures/slippage-monitor.fixture";
 import { installFetchMock, setupDashboardTestEnv, teardownDashboardTestEnv } from "../helpers/dashboard-test-env";
 
 const timestamp = new Date().toISOString();
-const execution = createSlippageMonitorSeed().executions[0]!;
+const execution = createMockExecutions(createMockThresholds())[0]!;
 
 afterEach(() => {
   cleanup();
@@ -45,7 +45,7 @@ describe("Slippage Monitor dashboard", () => {
       </QueryClientProvider>
     );
 
-    expect(screen.getByRole("heading", { name: "Slippage Monitor" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Slippage Monitor" })).toBeInTheDocument();
     expect(screen.getByText("Slippage Monitor Table")).toBeInTheDocument();
     expect(screen.getByText("AI Slippage Diagnostics")).toBeInTheDocument();
 

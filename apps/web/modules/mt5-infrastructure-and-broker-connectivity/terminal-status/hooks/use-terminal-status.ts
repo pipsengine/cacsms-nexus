@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { mt5RealtimeQueryOptions } from "@/lib/mt5-realtime";
 
 import { fetchTerminalStatus, runTerminalAction } from "../services/terminal-status.service";
 import type { TerminalStatusResponse } from "../types/terminal-status.types";
@@ -9,7 +10,7 @@ import type { TerminalStatusResponse } from "../types/terminal-status.types";
 export function useTerminalStatus() {
   const client = useQueryClient();
   const [streamConnected, setStreamConnected] = useState(false);
-  const query = useQuery({ queryKey: ["terminal-status"], queryFn: fetchTerminalStatus, staleTime: 4_000, refetchInterval: 30_000 });
+  const query = useQuery({ queryKey: ["terminal-status"], queryFn: fetchTerminalStatus, ...mt5RealtimeQueryOptions });
 
   useEffect(() => {
     const source = new EventSource("/api/mt5/terminal-status/events-stream");

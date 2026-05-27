@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { failure, ok } from "../../_lib/http";
+import { mt5StreamIntervalMs } from "../../_lib/realtime-stream";
 import {
   aiDiagnostics,
   autoRemediate,
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ slu
             controller.enqueue(encoder.encode(`event: connection-health-snapshot\ndata: ${JSON.stringify(payload)}\n\n`));
           };
           send();
-          const interval = setInterval(send, 5000);
+          const interval = setInterval(send, mt5StreamIntervalMs());
       request.signal.addEventListener("abort", () => {
             clearInterval(interval);
             controller.close();

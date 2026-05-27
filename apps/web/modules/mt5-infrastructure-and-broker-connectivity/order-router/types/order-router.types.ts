@@ -52,8 +52,39 @@ export type OrderRoute = {
   executionResponseTimeMs: number;
   failureReason?: string;
   mt5Ticket?: string;
+  bridgeCommandUuid?: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type StrategySignalInput = {
+  signalId?: string;
+  strategyId?: string;
+  strategyName?: string;
+  sourceEngine?: string;
+  accountLogin?: string;
+  eaInstanceId?: string;
+  symbol: string;
+  direction: "Buy" | "Sell";
+  orderType?: "Market" | "Limit" | "Stop";
+  volume: number;
+  entryPrice?: number;
+  stopLoss?: number;
+  takeProfit?: number;
+  routingPriority?: "Critical" | "High" | "Normal";
+};
+
+export type StrategySignalResult = {
+  ok: boolean;
+  routeId?: string;
+  orderId?: string;
+  bridgeCommandUuid?: string;
+  routingStatus?: RouteStatus;
+  deliveryStatus?: OrderRoute["deliveryStatus"];
+  executionStatus?: OrderRoute["executionStatus"];
+  blocked?: boolean;
+  blockReason?: string;
+  message: string;
 };
 
 export type RoutingChannel = {
@@ -192,5 +223,8 @@ export type RouterResponse = {
     canRevalidate: boolean;
     canReviewBlocked: boolean;
     canAutoRemediate: boolean;
+    canDispatch: boolean;
+    canSubmitTest: boolean;
+    canSubmitSignal: boolean;
   };
 };

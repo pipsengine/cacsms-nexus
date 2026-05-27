@@ -382,7 +382,7 @@ export async function refreshPersistedModuleSlice(moduleKey: Mt5ModuleKey, slice
   trackValue(moduleKey, entry.state, (entry.state as Record<string, unknown>)[sliceKey], new WeakSet());
 }
 
-export async function flushMt5ModulePersistence() {
+export async function flushMt5ModulePersistence(moduleKeys?: readonly Mt5ModuleKey[]) {
   if (!shouldUseDatabase()) {
     return;
   }
@@ -392,10 +392,13 @@ export async function flushMt5ModulePersistence() {
   }
   persistTimers.clear();
 
+  const keys = moduleKeys ? new Set(moduleKeys) : null;
   await Promise.all(
-    [...moduleRegistry.entries()].map(async ([moduleKey, entry]) => {
-      await writeModuleState(moduleKey, entry.state);
-    })
+    [...moduleRegistry.entries()]
+      .filter(([moduleKey]) => !keys || keys.has(moduleKey))
+      .map(async ([moduleKey, entry]) => {
+        await writeModuleState(moduleKey, entry.state);
+      })
   );
 }
 

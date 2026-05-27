@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { mt5RealtimeQueryOptions } from "@/lib/mt5-realtime";
 import { fetchAccountSync, runAccountSyncAction } from "../services/account-sync.service";
 import type { AccountSyncResponse } from "../types/account-sync.types";
 
 export function useAccountSync() {
   const client = useQueryClient();
   const [streamConnected, setStreamConnected] = useState(false);
-  const query = useQuery({ queryKey: ["account-sync"], queryFn: fetchAccountSync, staleTime: 4_000, refetchInterval: 30_000 });
+  const query = useQuery({ queryKey: ["account-sync"], queryFn: fetchAccountSync, ...mt5RealtimeQueryOptions });
   useEffect(() => {
     const source = new EventSource("/api/mt5/account-sync/events-stream");
     source.addEventListener("account-snapshot", (event) => {

@@ -1,12 +1,13 @@
 "use client";
 
-import { Activity, AlertTriangle, Bot, CheckCircle2, Download, Menu, RefreshCw, Search, ShieldCheck, Signal, Workflow } from "lucide-react";
+import { Activity, AlertTriangle, Bot, CheckCircle2, Download, Menu, Search, ShieldCheck, Signal, Workflow } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { AUTONOMOUS_SYNC_NOTICE, requiresOperatorConfirm } from "@/lib/mt5-autonomous";
 import { useSymbolSync } from "../hooks/use-symbol-sync";
 import type { SymbolSeverity, SymbolTone } from "../types/symbol-sync.types";
 
@@ -41,7 +42,7 @@ export function SymbolSyncDashboard() {
   const rows = data.symbols.filter((symbol) => `${symbol.brokerSymbol} ${symbol.normalizedSymbol} ${symbol.brokerName} ${symbol.assetClass}`.toLowerCase().includes(search.toLowerCase())).filter((symbol) => filter === "All" || symbol.mappingStatus === filter || symbol.feedStatus === filter || symbol.riskLevel === filter);
   const visibleIssues = data.issues.filter((issue) => issueFilter === "All" || issue.issueType === issueFilter || issue.severity === issueFilter);
   async function command(label: string, path: string, body?: Record<string, unknown>, method?: "POST" | "PATCH") {
-    if (!window.confirm(`Confirm ${label.toLowerCase()}? This symbol operation will be audit-logged.`)) return;
+    if (requiresOperatorConfirm(label) && !window.confirm(`Confirm ${label.toLowerCase()}? This action will be audit-logged.`)) return;
     setNotice(null);
     try {
       await query.action.mutateAsync({ path, method, body: { confirmed: true, ...body } });
@@ -62,18 +63,14 @@ export function SymbolSyncDashboard() {
           <p className="mt-2 max-w-4xl text-sm text-slate-600">Real-time MT5 instrument normalization, broker symbol mapping, market-data freshness, spread validation, and execution readiness.</p>
           <p className="mt-3 text-xs text-slate-500">Mode: {data.meta.monitoringMode} | Role: {data.permissions.role} | Updated: {time(data.meta.timestamp)} ({Math.max(0, Math.floor((now - new Date(data.meta.timestamp).getTime()) / 1000))}s ago)</p>
         </div>
-        <div className="hidden flex-wrap justify-end gap-2 sm:flex"><Button variant="outline" onClick={() => query.refetch()}><RefreshCw className="h-4 w-4" />Refresh Symbols</Button><Button variant="outline" onClick={exportReport}><Download className="h-4 w-4" />Export Report</Button></div>
-        <div className="sm:hidden"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline"><Menu className="h-4 w-4" />Actions</Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => query.refetch()}>Refresh Symbols</DropdownMenuItem><DropdownMenuItem onSelect={exportReport}>Export Report</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></div>
+        <div className="hidden flex-wrap justify-end gap-2 sm:flex"><Button variant="outline" onClick={exportReport}><Download className="h-4 w-4" />Export Report</Button></div>
+        <div className="sm:hidden"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline"><Menu className="h-4 w-4" />Actions</Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={exportReport}>Export Report</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></div>
+        <p className="border-t border-slate-100 px-5 py-2.5 text-xs text-slate-600">{AUTONOMOUS_SYNC_NOTICE}</p>
         {notice ? <p className="border-t border-slate-100 px-5 py-2.5 text-xs font-semibold text-blue-700">{notice}</p> : null}
       </section>
-      <Card><CardContent className="p-6 text-sm text-slate-600">No symbols are available yet. Run “Sync All Symbols” after at least one broker/terminal is connected, then refresh.</CardContent></Card>
+      <Card><CardContent className="p-6 text-sm text-slate-600">{AUTONOMOUS_SYNC_NOTICE} Attach NexusBridgeEA to a chart (for example GBPUSD) and symbols will register automatically from live ticks.</CardContent></Card>
     </div>;
   }
-  const actions = [
-    { label: "Sync All Symbols", path: "/api/mt5/symbol-sync/sync", allowed: data.permissions.canSync },
-    { label: "Validate Selected", path: `/api/mt5/symbol-sync/symbols/${selected.id}/validate`, allowed: data.permissions.canValidate },
-    { label: "Run Diagnostics", path: "/api/mt5/symbol-sync/diagnostics", allowed: data.permissions.canDiagnostics }
-  ];
   return <div className="mx-auto flex w-full max-w-[1900px] flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
     <section className="sticky top-14 z-20 rounded-2xl border border-slate-200 bg-white/95 shadow-card backdrop-blur">
       <div className="h-1.5 rounded-t-2xl bg-gradient-to-r from-blue-600 via-emerald-500 to-purple-600" />
@@ -83,8 +80,9 @@ export function SymbolSyncDashboard() {
         <p className="mt-2 max-w-4xl text-sm text-slate-600">Real-time MT5 instrument normalization, broker symbol mapping, market-data freshness, spread validation, and execution readiness.</p>
         <p className="mt-3 text-xs text-slate-500">Mode: {data.meta.monitoringMode} | Role: {data.permissions.role} | Selected: {selected.brokerSymbol} | Updated: {time(data.meta.timestamp)} ({Math.max(0, Math.floor((now - new Date(data.meta.timestamp).getTime()) / 1000))}s ago)</p>
       </div>
-      <div className="hidden flex-wrap justify-end gap-2 sm:flex"><Button variant="outline" onClick={() => query.refetch()}><RefreshCw className="h-4 w-4" />Refresh Symbols</Button>{actions.map((action) => <Button key={action.label} variant="outline" disabled={!action.allowed || query.action.isPending} onClick={() => command(action.label, action.path)}>{action.label}</Button>)}<Button variant="outline" onClick={exportReport}><Download className="h-4 w-4" />Export Report</Button></div>
-      <div className="sm:hidden"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline"><Menu className="h-4 w-4" />Actions</Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => query.refetch()}>Refresh Symbols</DropdownMenuItem>{actions.map((action) => <DropdownMenuItem key={action.label} disabled={!action.allowed} onSelect={() => command(action.label, action.path)}>{action.label}</DropdownMenuItem>)}<DropdownMenuItem onSelect={exportReport}>Export Report</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></div>
+      <div className="hidden flex-wrap justify-end gap-2 sm:flex"><Button variant="outline" onClick={exportReport}><Download className="h-4 w-4" />Export Report</Button></div>
+      <div className="sm:hidden"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline"><Menu className="h-4 w-4" />Actions</Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={exportReport}>Export Report</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></div>
+        <p className="border-t border-slate-100 px-5 py-2.5 text-xs text-slate-600">{AUTONOMOUS_SYNC_NOTICE}</p>
       {notice ? <p className="border-t border-slate-100 px-5 py-2.5 text-xs font-semibold text-blue-700">{notice}</p> : null}
     </section>
     <section className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">{data.kpis.map((kpi) => <Card key={kpi.label} className={cn("border-t-4", borders[kpi.status])}><CardContent className="p-3.5"><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{kpi.label}</p><p className="mt-2 truncate text-xl font-semibold">{kpi.value}</p><p className="mt-1 truncate text-[11px] text-slate-500">{kpi.detail}</p></CardContent></Card>)}</section>

@@ -151,6 +151,12 @@ function recomputeWorkflowAndMap() {
   }
 }
 
+export function autonomousRefreshHealth(_source: import("../../_lib/autonomous-orchestrator").AutonomousPipelineSource) {
+  recomputeWorkflowAndMap();
+  applyDerivedIncidents();
+  return buildSummary("Infrastructure Admin");
+}
+
 function applyDerivedIncidents() {
   const offenders = state.components.filter((c) => c.packetLossPercent >= 3);
   for (const c of offenders) {

@@ -11,8 +11,13 @@ import { bridgeInstances } from "../../ea-bridge/_lib/store";
 import { terminalRecords } from "../../terminal-status/_lib/store";
 import { resolveCacsmsEaRoot, resolveMt5FolderLayout } from "./paths";
 
-function bridgeForTerminal(terminalId: string) {
-  return bridgeInstances().find((instance) => instance.terminalId === terminalId) ?? null;
+function bridgeForTerminal(terminalId: string, accountLogin?: string) {
+  const byTerminal = bridgeInstances().find((instance) => instance.terminalId === terminalId);
+  if (byTerminal) return byTerminal;
+  if (accountLogin) {
+    return bridgeInstances().find((instance) => instance.accountLogin === accountLogin) ?? null;
+  }
+  return null;
 }
 
 function monitorForTerminal(terminalId: string) {
@@ -20,7 +25,7 @@ function monitorForTerminal(terminalId: string) {
 }
 
 export function mergeTerminalLiveState(terminal: Mt5TerminalLink): Mt5TerminalLink {
-  const bridge = bridgeForTerminal(terminal.terminalId);
+  const bridge = bridgeForTerminal(terminal.terminalId, terminal.accountLogin);
   const monitor = monitorForTerminal(terminal.terminalId);
 
   if (monitor?.terminalPath && monitor.terminalPath !== "Pending terminal installation") {

@@ -1,8 +1,12 @@
 import type { AuditRecord, Mt5Role, ScoreResult } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/types/mt5-control-center.types";
+import { normalizeSymbol } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/algorithms/mt5-control-center.algorithms";
 import {
   breachStatusFromThreshold,
   buildBrokerComparison,
+  calculateSlippagePoints,
+  classifySlippage,
   createSlippageAlert,
+  pointsToPips,
   riskLevelFromScore,
   slippageRiskScore,
   shouldBlockExecution
@@ -21,7 +25,9 @@ import type {
   SlippageExecution,
   SlippageLogEntry,
   SlippageMonitorSummaryResponse,
+  SlippageAssetClass,
   SlippageThreshold,
+  SlippageWorkflowNode,
   ThresholdCreateRequest,
   ThresholdUpdateRequest,
   ThresholdsResponse,
@@ -106,9 +112,244 @@ function newsWindowActive(now = new Date()) {
   return minute % 30 === 0 || minute % 30 === 1;
 }
 
-function pickThreshold(normalizedSymbol: string, brokerId: string) {
+const symbolMeta: Record<string, { digits: number; pointSize: number; pointsPerPip: number; pipValue: number }> = {
+  EURUSD: { digits: 5, pointSize: 0.00001, pointsPerPip: 10, pipValue: 10 },
+  GBPUSD: { digits: 5, pointSize: 0.00001, pointsPerPip: 10, pipValue: 10 },
+  USDJPY: { digits: 3, pointSize: 0.001, pointsPerPip: 10, pipValue: 10 },
+  XAUUSD: { digits: 2, pointSize: 0.01, pointsPerPip: 10, pipValue: 1 },
+  NAS100: { digits: 1, pointSize: 0.1, pointsPerPip: 10, pipValue: 1 },
+  SPX500: { digits: 1, pointSize: 0.1, pointsPerPip: 10, pipValue: 1 },
+  US30: { digits: 1, pointSize: 0.1, pointsPerPip: 10, pipValue: 1 }
+};
+
+function mapAssetClass(raw: string): SlippageAssetClass {
+  if (raw === "Forex") return "Forex";
+  if (raw === "Metals") return "Metals";
+  if (raw === "Indices") return "Indices";
+  if (raw === "Crypto") return "Crypto";
+  return "Unknown";
+}
+
+function tradingSession(now = new Date()) {
+  const hour = now.getUTCHours();
+  if (hour < 8) return "Asia";
+  if (hour < 16) return "London";
+  return "NY";
+}
+
+function ensureLiveThreshold(normalizedSymbol: string, brokerId: string, brokerName?: string): SlippageThreshold {
+  const existing = state.thresholds.find((t) => t.normalizedSymbol === normalizedSymbol && (t.brokerId === brokerId || t.brokerId == null));
+  if (existing) return existing;
+
+  const norm = normalizeSymbol(normalizedSymbol);
+  const assetClass = mapAssetClass(norm.assetClass);
+  const limits =
+    assetClass === "Metals"
+      ? { normal: 0.35, warn: 0.9, crit: 1.8, block: 2.4, retry: 1.7 }
+      : assetClass === "Indices"
+        ? { normal: 0.4, warn: 1.0, crit: 2.0, block: 2.7, retry: 2.0 }
+        : { normal: 0.2, warn: 0.5, crit: 1.0, block: 1.3, retry: 0.9 };
+
+  const threshold: SlippageThreshold = {
+    id: `thr-live-${normalizedSymbol}-${brokerId}`,
+    symbol: null,
+    normalizedSymbol,
+    assetClass,
+    brokerId,
+    broker: brokerName ?? null,
+    accountType: "All",
+    strategyType: "All",
+    tradingSession: "All",
+    newsImpactLevel: "High",
+    volatilityRegime: "Normal",
+    normalLimitPips: limits.normal,
+    warningLimitPips: limits.warn,
+    criticalLimitPips: limits.crit,
+    executionBlockLimitPips: limits.block,
+    maxRetrySlippagePips: limits.retry,
+    newsMultiplier: 1.6,
+    autoDisableEnabled: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  state.thresholds.push(threshold);
+  return threshold;
+}
+
+function pickThreshold(normalizedSymbol: string, brokerId: string, brokerName?: string) {
   const scoped = state.thresholds.find((t) => t.normalizedSymbol === normalizedSymbol && t.brokerId === brokerId);
-  return scoped ?? state.thresholds.find((t) => t.normalizedSymbol === normalizedSymbol && t.brokerId == null) ?? state.thresholds[0]!;
+  const fallback = state.thresholds.find((t) => t.normalizedSymbol === normalizedSymbol && t.brokerId == null);
+  return scoped ?? fallback ?? state.thresholds[0] ?? ensureLiveThreshold(normalizedSymbol, brokerId, brokerName);
+}
+
+function buildWorkflowNodes(executions: SlippageExecution[], alerts: SlippageAlert[]): SlippageWorkflowNode[] {
+  const total = executions.length;
+  const breaches = alerts.filter((a) => a.severity !== "Info" && a.resolutionStatus !== "Resolved").length;
+  const blocked = executions.filter((e) => !e.executionAllowed).length;
+  const latest = alerts[0];
+  const latestBreach = latest ? `${latest.alertType} · ${latest.normalizedSymbol}` : "—";
+  const step = (title: string, status: SlippageWorkflowNode["status"], failedCount: number, delay: number, ai: string): SlippageWorkflowNode => ({
+    title,
+    status,
+    orderCount: total,
+    failedCount,
+    averageDelayMs: delay,
+    latestBreach,
+    aiRecommendation: ai
+  });
+
+  return [
+    step("Order Requested", "Healthy", 0, 22, "Ensure order request timestamps are accurate for latency correlation."),
+    step("Price Captured", "Healthy", 0, 18, "Validate requested price capture and spread at request time."),
+    step("MT5 Execution", blocked > 0 ? "Degraded" : total ? "Healthy" : "Watch", blocked, total ? 210 : 0, "Monitor MT5 execution feedback for latency spikes."),
+    step("Executed Price Returned", total ? "Healthy" : "Watch", 0, total ? 165 : 0, "Compare across brokers when executed price drift appears."),
+    step("Slippage Calculated", breaches > 0 ? "Watch" : total ? "Healthy" : "Watch", breaches, total ? 35 : 0, "Classify positive/negative slippage by direction."),
+    step("Threshold Checked", breaches > 0 ? "Degraded" : total ? "Healthy" : "Watch", breaches, total ? 44 : 0, "Apply news multiplier and per-strategy limits."),
+    step("Broker Compared", total ? "Healthy" : "Watch", 0, total ? 70 : 0, "Prefer brokers with better execution quality rank."),
+    step("Risk Scored", breaches > 0 ? "Watch" : total ? "Healthy" : "Watch", breaches, total ? 55 : 0, "Escalate when negative slippage clusters on broker or session."),
+    step("Unsafe Execution Blocked", blocked > 0 ? "Critical" : "Healthy", blocked, 20, "Keep blocked until quality normalizes below warning thresholds."),
+    step("Audit Logged", "Healthy", 0, 10, "Ensure blocks and threshold changes are audit logged.")
+  ];
+}
+
+export function ingestExecutionFromOrderRouter(input: {
+  routeId: string;
+  orderId: string;
+  accountId: string;
+  accountLogin: string;
+  brokerId: string;
+  brokerName: string;
+  terminalId: string;
+  terminalName: string;
+  eaInstanceId: string;
+  eaInstanceName: string;
+  strategyId: string;
+  strategyName: string;
+  symbol: string;
+  normalizedSymbol: string;
+  direction: "Buy" | "Sell";
+  orderType: "Market" | "Limit" | "Stop";
+  requestedPrice: number;
+  executedPrice?: number;
+  executionTimeMs: number;
+  executedAt: string;
+  mt5Ticket?: string;
+}) {
+  const dedupeKey = `${input.orderId}:${input.mt5Ticket ?? input.executedAt}`;
+  if (state.executions.some((e) => `${e.orderId}:${e.mt5Ticket ?? e.createdAt}` === dedupeKey)) {
+    return state.executions.find((e) => `${e.orderId}:${e.mt5Ticket ?? e.createdAt}` === dedupeKey)!;
+  }
+
+  const norm = normalizeSymbol(input.normalizedSymbol || input.symbol);
+  const meta = symbolMeta[norm.normalizedSymbol] ?? { digits: 5, pointSize: 0.00001, pointsPerPip: 10, pipValue: 10 };
+  const threshold = ensureLiveThreshold(norm.normalizedSymbol, input.brokerId, input.brokerName);
+  const executedAt = new Date(input.executedAt);
+  const news = newsWindowActive(executedAt);
+  const requestedPrice = Number(input.requestedPrice.toFixed(meta.digits));
+  const executedPrice = Number((input.executedPrice ?? input.requestedPrice).toFixed(meta.digits));
+  const slippagePoints = calculateSlippagePoints({
+    direction: input.direction,
+    requestedPrice,
+    executedPrice,
+    pointSize: meta.pointSize
+  });
+  const slippagePips = pointsToPips(slippagePoints, meta.pointsPerPip);
+  const absPips = Math.abs(slippagePips);
+  const breachStatus = breachStatusFromThreshold(absPips, threshold, news);
+  const executionTimeMs = Math.max(0, input.executionTimeMs);
+  const spreadAtExecution = norm.assetClass === "Indices" ? 1.2 : norm.normalizedSymbol === "XAUUSD" ? 1.5 : 0.8;
+  const marketVolatilityScore = Math.min(100, Math.round(40 + executionTimeMs / 12 + absPips * 8));
+  const qualityScore = Math.max(0, Math.min(100, Math.round(100 - absPips * 22 - executionTimeMs / 18 - spreadAtExecution * 4)));
+  const executionQuality = qualityScore >= 86 ? "Excellent" : qualityScore >= 72 ? "Good" : qualityScore >= 55 ? "Degraded" : "Poor";
+  const riskScore = Math.max(0, Math.min(100, 100 - qualityScore + (breachStatus === "Blocked" ? 25 : breachStatus === "Critical" ? 18 : breachStatus === "Warning" ? 9 : 0)));
+  const riskLevel = riskLevelFromScore(riskScore);
+  const blockDecision = shouldBlockExecution({
+    breachStatus,
+    newsWindowActive: news,
+    volatilityScore: marketVolatilityScore,
+    executionTimeMs,
+    spreadAtExecution,
+    peerBrokerMateriallyBetter: false,
+    threshold
+  });
+  const executionAllowed = !state.unsafeExecutionDisabled && !(blockDecision.shouldBlock && threshold.autoDisableEnabled);
+  const slippageValue = Number((slippagePips * meta.pipValue).toFixed(2));
+  const directionAdjustedSlippage = classifySlippage(slippagePips) === "Negative" ? -Math.abs(slippagePips) : Math.abs(slippagePips);
+  const executionId = `execution-${input.routeId}-${state.executions.length + 1}`;
+
+  const execution: SlippageExecution = {
+    id: `exec-${Date.now()}-${state.executions.length}`,
+    executionId,
+    orderId: input.orderId,
+    tradeId: input.mt5Ticket ? `trade-${input.mt5Ticket}` : null,
+    mt5Ticket: input.mt5Ticket ?? null,
+    accountId: input.accountId,
+    account: input.accountLogin,
+    brokerId: input.brokerId,
+    broker: input.brokerName,
+    terminalId: input.terminalId,
+    terminal: input.terminalName,
+    eaInstanceId: input.eaInstanceId,
+    eaInstance: input.eaInstanceName,
+    strategyId: input.strategyId,
+    strategy: input.strategyName,
+    symbol: input.symbol,
+    normalizedSymbol: norm.normalizedSymbol,
+    assetClass: mapAssetClass(norm.assetClass),
+    direction: input.direction,
+    orderType: input.orderType,
+    requestedPrice,
+    executedPrice,
+    slippagePoints,
+    slippagePips,
+    slippageValue,
+    directionAdjustedSlippage,
+    executionTimeMs,
+    spreadAtExecution,
+    marketVolatilityScore,
+    tradingSession: tradingSession(executedAt),
+    newsWindowActive: news,
+    thresholdId: threshold.id,
+    thresholdValue: threshold.warningLimitPips,
+    breachStatus,
+    executionQualityScore: qualityScore,
+    executionQuality,
+    riskLevel,
+    executionAllowed,
+    createdAt: input.executedAt
+  };
+
+  state.executions.unshift(execution);
+  state.executions = state.executions.slice(0, 500);
+  state.trends.unshift({
+    measuredAt: input.executedAt,
+    brokerId: input.brokerId,
+    broker: input.brokerName,
+    normalizedSymbol: norm.normalizedSymbol,
+    strategy: input.strategyName,
+    tradingSession: tradingSession(executedAt),
+    slippagePips,
+    executionTimeMs,
+    spreadAtExecution
+  });
+  state.trends = state.trends.slice(0, 300);
+  addLog({
+    timestamp: new Date().toISOString(),
+    eventType: "Execution Feedback",
+    severity: breachStatus === "Critical" || breachStatus === "Blocked" ? "Critical" : breachStatus === "Warning" ? "Warning" : "Info",
+    executionId,
+    orderId: input.orderId,
+    brokerId: input.brokerId,
+    symbol: norm.normalizedSymbol,
+    message: "Execution ingested from order-router feedback.",
+    statusBefore: "Pending",
+    statusAfter: executionAllowed ? "Allowed" : "Blocked",
+    slippagePips,
+    executionAllowed,
+    actionTaken: executionAllowed ? "Monitor" : "Block"
+  });
+  recomputeDerived(executedAt);
+  return execution;
 }
 
 function upsertAlert(alert: SlippageAlert) {
@@ -137,7 +378,7 @@ function recomputeDerived(now = new Date()) {
   }
 
   state.executions = state.executions.map((e) => {
-    const threshold = pickThreshold(e.normalizedSymbol, e.brokerId);
+    const threshold = pickThreshold(e.normalizedSymbol, e.brokerId, e.broker);
     const news = e.newsWindowActive || globalNews;
     const absPips = Math.abs(e.slippagePips);
     const breachStatus = breachStatusFromThreshold(absPips, threshold, news);
@@ -292,7 +533,8 @@ export function summary(role: Mt5Role): SlippageMonitorSummaryResponse {
 
 export function workflow(): WorkflowResponse {
   recomputeDerived(new Date());
-  return { meta: { timestamp: new Date().toISOString() }, workflow: state.workflow };
+  const nodes = state.workflow.length ? state.workflow : buildWorkflowNodes(state.executions, state.alerts);
+  return { meta: { timestamp: new Date().toISOString() }, workflow: nodes };
 }
 
 export function executions(params: { search?: string; assetClass?: string; breach?: string; brokerId?: string; page?: number; pageSize?: number }): ExecutionsResponse {

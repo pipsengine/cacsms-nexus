@@ -1,6 +1,7 @@
 import type { AuditRecord, Mt5Role } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/types/mt5-control-center.types";
 import {
   buildBrokerComparison,
+  calculateSpreadPips,
   classifyPeerComparison,
   createSpreadAlert,
   spreadRiskScore,
@@ -15,6 +16,7 @@ import type {
   BrokerComparisonResponse,
   LogsResponse,
   SpreadAlert,
+  SpreadAssetClass,
   SpreadLogEntry,
   SpreadMonitorSummaryResponse,
   SpreadSnapshot,
@@ -28,6 +30,7 @@ import type {
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/spread-monitor/types/spread-monitor.types";
 import { resolveMt5Role } from "../../_lib/access";
 import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
+import { hasLivePrices, resolveNormalizedQuote, spreadMonitorMeta, type LiveQuoteInput, quoteSymbolKey } from "../../_lib/quote-ingest-shared";
 
 const state = bindPersistedMt5State("spread-monitor", () => ({
   thresholds: [] as SpreadThreshold[],
@@ -102,7 +105,88 @@ function newsBlackoutActive(now = new Date()) {
 
 function pickThreshold(normalizedSymbol: string, brokerId: string) {
   const scoped = state.thresholds.find((t) => t.normalizedSymbol === normalizedSymbol && t.brokerId === brokerId);
-  return scoped ?? state.thresholds.find((t) => t.normalizedSymbol === normalizedSymbol && t.brokerId == null) ?? state.thresholds[0]!;
+  const fallback = state.thresholds.find((t) => t.normalizedSymbol === normalizedSymbol && t.brokerId == null);
+  return scoped ?? fallback ?? state.thresholds[0] ?? ensureLiveThreshold(normalizedSymbol, brokerId);
+}
+
+function ensureLiveThreshold(normalizedSymbol: string, brokerId: string, brokerName?: string): SpreadThreshold {
+  const existing = state.thresholds.find((t) => t.normalizedSymbol === normalizedSymbol && (t.brokerId === brokerId || t.brokerId == null));
+  if (existing) return existing;
+  const meta = spreadMonitorMeta(normalizedSymbol);
+  const limits =
+    meta.assetClass === "Metals"
+      ? { normal: 2, warn: 4.5, crit: 7.5, block: 9.5, scalp: 2.8 }
+      : meta.assetClass === "Indices"
+        ? { normal: 1.5, warn: 3, crit: 6, block: 7.5, scalp: 2 }
+        : { normal: 0.8, warn: 1.5, crit: 2.6, block: 3.2, scalp: 1 };
+  const threshold: SpreadThreshold = {
+    id: `thr-live-${normalizedSymbol}-${brokerId}`,
+    symbol: null,
+    normalizedSymbol,
+    assetClass: meta.assetClass as SpreadAssetClass,
+    brokerId,
+    broker: brokerName ?? null,
+    accountType: "All",
+    tradingSession: "All",
+    strategyType: "All",
+    newsImpactLevel: "High",
+    volatilityRegime: "Normal",
+    normalLimitPips: limits.normal,
+    warningLimitPips: limits.warn,
+    criticalLimitPips: limits.crit,
+    executionBlockLimitPips: limits.block,
+    scalpingMaxSpreadPips: limits.scalp,
+    newsMultiplier: 1.65,
+    autoDisableEnabled: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  state.thresholds.push(threshold);
+  return threshold;
+}
+
+export function ingestHeartbeatQuote(input: LiveQuoteInput) {
+  if (!input.symbol?.trim() || !hasLivePrices(input)) return null;
+  const brokerSymbol = input.symbol.trim();
+  const normalized = resolveNormalizedQuote(brokerSymbol);
+  const meta = spreadMonitorMeta(normalized.normalizedSymbol);
+  const threshold = ensureLiveThreshold(normalized.normalizedSymbol, input.brokerId, input.brokerName);
+  const currentSpreadPips = calculateSpreadPips(input.bid!, input.ask!, meta.pipSize);
+  const key = quoteSymbolKey(input.brokerId, brokerSymbol);
+  const existingIndex = state.spreads.findIndex((row) => quoteSymbolKey(row.brokerId, row.symbol) === key);
+  const previous = existingIndex >= 0 ? state.spreads[existingIndex] : undefined;
+  const averageSpreadPips = previous ? Number((previous.averageSpreadPips * 0.9 + currentSpreadPips * 0.1).toFixed(2)) : currentSpreadPips;
+  const spreadStatus = spreadStatusFromThreshold(currentSpreadPips, threshold, newsBlackoutActive(new Date(input.receivedAt)));
+  const next = {
+    id: previous?.id ?? `spr-live-${key.replace(/:/g, "-")}`,
+    symbol: brokerSymbol,
+    normalizedSymbol: normalized.normalizedSymbol,
+    broker: input.brokerName,
+    brokerId: input.brokerId,
+    account: input.accountLogin,
+    accountId: input.accountId,
+    assetClass: meta.assetClass as SpreadAssetClass,
+    bid: input.bid!,
+    ask: input.ask!,
+    digits: meta.digits,
+    pointValue: meta.pointValue,
+    contractSize: meta.contractSize,
+    currentSpreadPips,
+    averageSpreadPips,
+    minimumSpreadPips: previous ? Math.min(previous.minimumSpreadPips, currentSpreadPips) : currentSpreadPips,
+    maximumSpreadPips: previous ? Math.max(previous.maximumSpreadPips, currentSpreadPips) : currentSpreadPips,
+    spreadDeviationPercent: averageSpreadPips > 0 ? Number((((currentSpreadPips - averageSpreadPips) / averageSpreadPips) * 100).toFixed(1)) : 0,
+    spreadStabilityScore: previous?.spreadStabilityScore ?? 85,
+    thresholdId: threshold.id,
+    threshold,
+    spreadStatus,
+    executionAllowed: currentSpreadPips < threshold.executionBlockLimitPips,
+    lastTickTime: input.receivedAt,
+    riskLevel: spreadStatus === "Critical" ? "High" : spreadStatus === "Wide" ? "Elevated" : "Low"
+  } as const;
+  if (existingIndex >= 0) state.spreads[existingIndex] = next;
+  else state.spreads.unshift(next);
+  return next;
 }
 
 function upsertAlert(alert: SpreadAlert) {

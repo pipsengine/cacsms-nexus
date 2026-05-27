@@ -21,6 +21,9 @@ export type TerminalHeartbeatPayload = {
   marketDataActive: boolean;
   tradingEnabled: boolean;
   latencyMs: number;
+  quoteSymbol?: string;
+  bid?: number;
+  ask?: number;
 };
 
 export type TerminalAccountSnapshotPayload = {

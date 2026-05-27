@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { mt5RealtimeQueryOptions } from "@/lib/mt5-realtime";
 import type { EaTerminalHubResponse } from "../types/ea-terminal-hub.types";
 import { fetchEaTerminalHub, runEaTerminalHubAction } from "../services/ea-terminal-hub.service";
 
@@ -12,8 +13,7 @@ export function useEaTerminalHub() {
   const query = useQuery({
     queryKey: ["ea-terminal-hub"],
     queryFn: fetchEaTerminalHub,
-    staleTime: 4_000,
-    refetchInterval: 30_000
+    ...mt5RealtimeQueryOptions
   });
 
   useEffect(() => {

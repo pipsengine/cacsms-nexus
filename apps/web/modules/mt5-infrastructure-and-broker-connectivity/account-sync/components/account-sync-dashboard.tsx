@@ -1,12 +1,13 @@
 "use client";
 
-import { Activity, AlertTriangle, Bot, ChevronRight, Download, Menu, RefreshCw, Search, ShieldCheck, Wallet, Workflow } from "lucide-react";
+import { Activity, AlertTriangle, Bot, ChevronRight, Download, Menu, Search, ShieldCheck, Wallet, Workflow } from "lucide-react";
 import { Fragment, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { AUTONOMOUS_SYNC_NOTICE, requiresOperatorConfirm } from "@/lib/mt5-autonomous";
 import { calculateExposureRisk, validateTradingReadiness } from "../algorithms/account-sync.algorithms";
 import { useAccountSync } from "../hooks/use-account-sync";
 import type { AccountSeverity, AccountTone, ReconciliationStatus } from "../types/account-sync.types";
@@ -49,7 +50,7 @@ export function AccountSyncDashboard() {
       setNotice("No account is selected for this action yet.");
       return;
     }
-    if (!window.confirm(`Confirm ${label.toLowerCase()}? This account operation will be audit-logged.`)) return;
+    if (requiresOperatorConfirm(label) && !window.confirm(`Confirm ${label.toLowerCase()}? This action will be audit-logged.`)) return;
     setNotice(null);
     try { await query.action.mutateAsync({ path, body: { confirmed: true, ...body } }); setNotice(`${label} completed and was recorded in the audit trail.`); } catch (error) { setNotice(error instanceof Error ? error.message : "Account action failed."); }
   }
@@ -58,17 +59,16 @@ export function AccountSyncDashboard() {
     const anchor = document.createElement("a"); anchor.href = URL.createObjectURL(blob); anchor.download = "account-sync-report.json"; anchor.click(); URL.revokeObjectURL(anchor.href);
   }
   const headerActions = [
-    { label: "Sync All Accounts", path: "/api/mt5/account-sync/sync-all", allowed: data.permissions.canSync },
-    { label: "Sync Selected", path: "/api/mt5/account-sync/sync-selected", allowed: data.permissions.canSync && Boolean(selected), body: selected ? { accountIds: [selected.id] } : undefined },
-    { label: "Run Account Diagnostics", path: selected ? `/api/mt5/account-sync/accounts/${selected.id}/diagnostics` : "", allowed: data.permissions.canDiagnostics && Boolean(selected) },
-    { label: "Reconcile Balances", path: "/api/mt5/account-sync/reconcile-all", allowed: data.permissions.canReconcile }
+    { label: "Disable account trading", path: selected ? `/api/mt5/account-sync/accounts/${selected.id}/disable-trading` : "", allowed: data.permissions.canTradeControl && Boolean(selected?.tradingAllowed), destructive: true },
+    { label: "Enable account trading", path: selected ? `/api/mt5/account-sync/accounts/${selected.id}/enable-trading` : "", allowed: data.permissions.canTradeControl && Boolean(selected && !selected.tradingAllowed), destructive: false }
   ];
   return <div className="mx-auto flex w-full max-w-[1900px] flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
     <section className="sticky top-14 z-20 rounded-2xl border border-slate-200 bg-white/95 shadow-card backdrop-blur">
       <div className="h-1.5 rounded-t-2xl bg-gradient-to-r from-blue-600 via-emerald-500 to-purple-600" />
       <div className="flex flex-col gap-5 p-5 xl:flex-row xl:justify-between"><div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">MT5 Infrastructure &amp; Broker Connectivity / Account Sync</p><div className="mt-2 flex flex-wrap items-center gap-2"><h1 className="text-3xl font-semibold tracking-tight text-slate-950">Account Sync</h1><Badge variant={query.streamConnected ? "success" : "warning"}><Activity className="mr-1 h-3 w-3" />{query.streamConnected ? "Live stream" : "Reconnecting"}</Badge></div><p className="mt-2 max-w-4xl text-sm text-slate-600">Real-time synchronization of MT5 accounts, balances, equity, margin, permissions, exposure, and trading readiness.</p><p className="mt-3 text-xs text-slate-500">Mode: {data.meta.monitoringMode} | Role: {data.permissions.role} | Selected: {selected?.accountLogin ?? "None"} | Updated: {time(data.meta.timestamp)}</p></div>
-        <div className="hidden flex-wrap justify-end gap-2 sm:flex"><Button variant="outline" onClick={() => query.refetch()}><RefreshCw className="h-4 w-4" />Refresh Accounts</Button>{headerActions.map((action) => <Button key={action.label} variant="outline" disabled={!action.allowed || query.action.isPending} onClick={() => command(action.label, action.path, action.body)}>{action.label}</Button>)}<Button variant="outline" onClick={exportReport}><Download className="h-4 w-4" />Export Sync Report</Button><Button variant="destructive" disabled={!data.permissions.canTradeControl || !selected?.tradingAllowed} onClick={() => command("Disable account trading", selected ? `/api/mt5/account-sync/accounts/${selected.id}/disable-trading` : "")}>Disable Account Trading</Button></div>
-        <div className="sm:hidden"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline"><Menu className="h-4 w-4" />Actions</Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => query.refetch()}>Refresh Accounts</DropdownMenuItem>{headerActions.map((action) => <DropdownMenuItem key={action.label} disabled={!action.allowed} onSelect={() => command(action.label, action.path, action.body)}>{action.label}</DropdownMenuItem>)}<DropdownMenuItem onSelect={exportReport}>Export Sync Report</DropdownMenuItem><DropdownMenuItem disabled={!data.permissions.canTradeControl || !selected?.tradingAllowed} className="text-red-700" onSelect={() => command("Disable account trading", selected ? `/api/mt5/account-sync/accounts/${selected.id}/disable-trading` : "")}>Disable Account Trading</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></div>
+        <div className="hidden flex-wrap justify-end gap-2 sm:flex">{headerActions.map((action) => <Button key={action.label} variant={action.destructive ? "destructive" : "outline"} disabled={!action.allowed || query.action.isPending} onClick={() => command(action.label, action.path)}>{action.label}</Button>)}<Button variant="outline" onClick={exportReport}><Download className="h-4 w-4" />Export Sync Report</Button></div>
+        <div className="sm:hidden"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline"><Menu className="h-4 w-4" />Actions</Button></DropdownMenuTrigger><DropdownMenuContent align="end">{headerActions.map((action) => <DropdownMenuItem key={action.label} disabled={!action.allowed} className={action.destructive ? "text-red-700" : undefined} onSelect={() => command(action.label, action.path)}>{action.label}</DropdownMenuItem>)}<DropdownMenuItem onSelect={exportReport}>Export Sync Report</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></div>
+      <p className="border-t border-slate-100 px-5 py-2.5 text-xs text-slate-600">{AUTONOMOUS_SYNC_NOTICE}</p>
       {notice ? <p className="border-t border-slate-100 px-5 py-2.5 text-xs font-semibold text-blue-700">{notice}</p> : null}
     </section>
     <section className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">{data.kpis.map((kpi) => <Card key={kpi.label} className={cn("border-t-4", borders[kpi.status])}><CardContent className="p-3.5"><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{kpi.label}</p><p className="mt-2 truncate text-xl font-semibold">{kpi.value}</p><p className="mt-1 truncate text-[11px] text-slate-500">{kpi.detail}</p></CardContent></Card>)}</section>

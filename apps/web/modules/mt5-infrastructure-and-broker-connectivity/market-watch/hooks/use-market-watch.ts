@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { mt5RealtimeQueryOptions } from "@/lib/mt5-realtime";
 import { fetchMarketWatch, runMarketWatchAction } from "../services/market-watch.service";
 import type { MarketWatchResponse } from "../types/market-watch.types";
 
 export function useMarketWatch() {
   const client = useQueryClient();
   const [streamConnected, setStreamConnected] = useState(false);
-  const query = useQuery({ queryKey: ["market-watch"], queryFn: fetchMarketWatch, staleTime: 4_000, refetchInterval: 30_000 });
+  const query = useQuery({ queryKey: ["market-watch"], queryFn: fetchMarketWatch, ...mt5RealtimeQueryOptions });
   useEffect(() => {
     const source = new EventSource("/api/mt5/market-watch/events-stream");
     source.addEventListener("market-snapshot", (event) => {

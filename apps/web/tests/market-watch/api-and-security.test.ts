@@ -1,6 +1,6 @@
 import {describe, expect, it, beforeEach } from "vitest";
 import { seedMarketWatchStore } from "@/tests/helpers/seed-api-stores";
-import { audits, buildMarketWatchResponse, marketRole, refreshQuotes, runMarketDiagnostics, toggleWatchlist } from "@/app/api/mt5/market-watch/_lib/store";
+import { audits, buildMarketWatchResponse, marketRole, refreshQuotes, resetMarketWatchState, runMarketDiagnostics, toggleWatchlist } from "@/app/api/mt5/market-watch/_lib/store";
 
 describe("Market Watch operational controls", () => {
   beforeEach(() => seedMarketWatchStore());
@@ -12,6 +12,13 @@ describe("Market Watch operational controls", () => {
     expect(response.alerts.some((alert) => alert.alertType === "Feed Offline")).toBe(true);
     expect(response.movers).toHaveLength(4);
     expect(response.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("handles an empty live quote registry without throwing", () => {
+    resetMarketWatchState();
+    const response = buildMarketWatchResponse("Infrastructure Admin");
+    expect(response.kpis.find((kpi) => kpi.label === "Largest Move")?.value).toBe("None");
+    expect(response.instruments).toEqual([]);
   });
 
   it("enforces permissions and confirmation for market actions", () => {

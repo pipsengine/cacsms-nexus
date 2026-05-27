@@ -684,7 +684,7 @@ const permissions: Record<string, Mt5Role[]> = {
   restart: ["Super Admin", "Infrastructure Admin"],
   rotateToken: ["Super Admin", "Infrastructure Admin"],
   reissuePairing: ["Super Admin", "Infrastructure Admin"],
-  tradeControl: ["Super Admin", "Trading Admin"],
+  tradeControl: ["Super Admin", "Infrastructure Admin", "Trading Admin"],
   rebindTerminal: ["Super Admin", "Infrastructure Admin"],
   autoRemediate: ["Super Admin", "Infrastructure Admin"],
   emergencyDisable: ["Super Admin"],
@@ -896,23 +896,50 @@ export function ingestSignedBridgeEvent(
       instance.currentIpAddress = remoteAddress;
     }
     if (!payload.tradingEnabled) instance.tradingChannelEnabled = false;
+    if (payload.quoteSymbol?.trim()) {
+      const scoped = payload.quoteSymbol.trim();
+      if (!instance.symbolScope.includes(scoped)) {
+        instance.symbolScope = [...instance.symbolScope, scoped].slice(-32);
+      }
+    }
     activateRegisteredTerminalFromHeartbeat(instance.terminalId, payload, envelope.timestamp);
     recordVerifiedTerminalHeartbeat(instance.terminalId, payload, envelope.timestamp);
+    void import("../../_lib/fan-out-heartbeat-quote")
+      .then(({ fanOutHeartbeatQuote }) =>
+        fanOutHeartbeatQuote({
+          brokerId: instance.brokerId,
+          brokerName: instance.brokerName,
+          accountId: instance.accountId,
+          accountLogin: instance.accountLogin,
+          serverName: instance.terminalName,
+          symbol: payload.quoteSymbol,
+          bid: payload.bid,
+          ask: payload.ask,
+          marketDataActive: payload.marketDataActive,
+          tradingEnabled: payload.tradingEnabled,
+          latencyMs: payload.latencyMs,
+          receivedAt: envelope.timestamp
+        })
+      )
+      .catch(() => undefined);
   } else if (expectedType === "Account Snapshot") {
     const payload = parsePayload<TerminalAccountSnapshotPayload>(envelope);
     if (payload.accountLogin !== instance.accountLogin) throw new Error("Schema validation error: snapshot account is not bound to this EA instance.");
     const result = ingestTerminalAccountSnapshot(payload);
     accountSync = { account: result.account, reconciliation: result.reconciliation };
+    void import("../../_lib/autonomous-orchestrator").then(({ runAutonomousPipeline }) => runAutonomousPipeline("account-snapshot")).catch(() => undefined);
   } else if (expectedType === "Position Update") {
     const payload = parsePayload<TerminalPositionUpdatePayload>(envelope);
     if (payload.accountLogin !== instance.accountLogin) throw new Error("Schema validation error: position update account is not bound to this EA instance.");
     const result = ingestTerminalPositionUpdates(payload);
     accountSync = { account: result.account, positions: result.positions };
+    void import("../../_lib/autonomous-orchestrator").then(({ runAutonomousPipeline }) => runAutonomousPipeline("position-update")).catch(() => undefined);
   } else if (expectedType === "Pending Order Update") {
     const payload = parsePayload<TerminalPendingOrderUpdatePayload>(envelope);
     if (payload.accountLogin !== instance.accountLogin) throw new Error("Schema validation error: pending order update account is not bound to this EA instance.");
     const result = ingestTerminalPendingOrderUpdates(payload);
     accountSync = { account: result.account, orders: result.orders };
+    void import("../../_lib/autonomous-orchestrator").then(({ runAutonomousPipeline }) => runAutonomousPipeline("pending-order-update")).catch(() => undefined);
   } else {
     parsePayload<unknown>(envelope);
   }
@@ -961,6 +988,17 @@ export function acknowledgeTradeCommand(instanceId: string, envelope: SignedBrid
   }
   const message = recordSignedMessage(envelope, instance, "Trade Command Router");
   audit("Infrastructure Admin", "EA execution feedback received", command.id, null, { status: payload.status, responseTimeMs: payload.responseTimeMs }, request);
+  void import("../../order-router/_lib/store")
+    .then(({ applyBridgeExecutionFeedback }) =>
+      applyBridgeExecutionFeedback({
+        commandUuid: payload.commandUuid,
+        status: payload.status === "Executed" ? "Executed" : "Rejected",
+        responseTimeMs: payload.responseTimeMs,
+        rejectionReason: payload.rejectionReason,
+        executedAt: envelope.timestamp
+      })
+    )
+    .catch(() => undefined);
   return { accepted: true, command, message };
 }
 
