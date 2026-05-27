@@ -30,8 +30,8 @@ int OnInit()
 {
    if(IngestionToken == "" || SigningSecret == "")
    {
-      Alert("Nexus Bridge EA: open EA Properties and paste IngestionToken and SigningSecret from your MT5 Control Center onboarding receipt. The EA cannot run without them.");
-      Print("Nexus Bridge requires IngestionToken and SigningSecret inputs from the onboarding receipt.");
+      Alert("Nexus Bridge EA: open EA Properties and paste IngestionToken and SigningSecret from your Nexus EA Bridge pairing receipt (Reissue EA Pairing in Nexus UI). The EA cannot run without them.");
+      Print("Nexus Bridge requires IngestionToken and SigningSecret inputs from the EA Bridge pairing receipt.");
       return INIT_PARAMETERS_INCORRECT;
    }
 

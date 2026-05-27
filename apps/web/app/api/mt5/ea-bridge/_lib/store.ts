@@ -55,6 +55,13 @@ type EaIssuedCredentialSecrets = Record<
     signingSecret: string;
     ingestionTokenHint?: EaIngestionTokenFingerprint;
     signingSecretHint?: EaIngestionTokenFingerprint;
+    legacyPairings?: Array<{
+      ingestionTokenHash: string;
+      signingSecret: string;
+      ingestionTokenHint?: EaIngestionTokenFingerprint;
+      signingSecretHint?: EaIngestionTokenFingerprint;
+      expiresAt: string;
+    }>;
   }
 >;
 
@@ -98,12 +105,20 @@ const state = bindPersistedMt5State("ea-bridge", () => ({
 
 await ensureMt5ModuleHydrated("ea-bridge");
 
+const LEGACY_PAIRING_GRACE_MS = (() => {
+  const raw = process.env.MT5_EA_PAIRING_GRACE_MS;
+  if (!raw) return 1000 * 60 * 60 * 24;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1000 * 60 * 60 * 24;
+})();
+
 function ensureCredentialStore() {
   if (!state.issuedCredentialSecrets || typeof state.issuedCredentialSecrets !== "object") {
     state.issuedCredentialSecrets = {};
     return;
   }
 
+  const now = Date.now();
   const normalized: EaIssuedCredentialSecrets = {};
   for (const [instanceId, entry] of Object.entries(state.issuedCredentialSecrets as Record<string, unknown>)) {
     if (!entry || typeof entry !== "object") continue;
@@ -111,11 +126,32 @@ function ensureCredentialStore() {
     const ingestionTokenHash = typeof record.ingestionTokenHash === "string" ? record.ingestionTokenHash : "";
     const signingSecret = typeof record.signingSecret === "string" ? record.signingSecret : "";
     if (!ingestionTokenHash || !signingSecret) continue;
+    const legacyPairings = Array.isArray(record.legacyPairings)
+      ? record.legacyPairings
+          .map((pairing) => {
+            if (!pairing || typeof pairing !== "object") return null;
+            const item = pairing as Record<string, unknown>;
+            const legacyHash = typeof item.ingestionTokenHash === "string" ? item.ingestionTokenHash : "";
+            const legacySecret = typeof item.signingSecret === "string" ? item.signingSecret : "";
+            const expiresAt = typeof item.expiresAt === "string" ? item.expiresAt : "";
+            const expiresMs = expiresAt ? new Date(expiresAt).getTime() : 0;
+            if (!legacyHash || !legacySecret || !expiresAt || !Number.isFinite(expiresMs) || expiresMs <= now) return null;
+            return {
+              ingestionTokenHash: legacyHash,
+              signingSecret: normalizeIngestionToken(legacySecret),
+              ingestionTokenHint: normalizeFingerprint(item.ingestionTokenHint),
+              signingSecretHint: normalizeFingerprint(item.signingSecretHint),
+              expiresAt
+            };
+          })
+          .filter((value): value is NonNullable<typeof value> => Boolean(value))
+      : [];
     normalized[instanceId] = {
       ingestionTokenHash,
       signingSecret,
       ingestionTokenHint: normalizeFingerprint(record.ingestionTokenHint),
-      signingSecretHint: normalizeFingerprint(record.signingSecretHint)
+      signingSecretHint: normalizeFingerprint(record.signingSecretHint),
+      ...(legacyPairings.length ? { legacyPairings } : {})
     };
   }
   state.issuedCredentialSecrets = normalized;
@@ -128,7 +164,6 @@ function isLocalDevOperatorMode() {
 export function eaBridgePublicBaseUrl(request?: Request) {
   const configured = process.env.MT5_EA_BRIDGE_PUBLIC_URL?.trim().replace(/\/+$/, "");
   if (configured) return configured;
-  if (isLocalDevOperatorMode()) return "http://127.0.0.1:3000";
   return request ? new URL(request.url).origin : "http://127.0.0.1:3000";
 }
 
@@ -148,6 +183,11 @@ function parseSha256TokenHash(value: string) {
 
 function ensureLocalDevCredentialAlignment(instanceId: string) {
   if (!isLocalDevOperatorMode()) return;
+  ensureCredentialStore();
+  const existing = state.issuedCredentialSecrets[instanceId];
+  if (existing?.ingestionTokenHash && existing.signingSecret) {
+    return;
+  }
   const ingestionToken = localDevIngestionToken();
   const signingSecret = localDevSigningSecret(instanceId);
   if (!ingestionToken || !signingSecret) return;
@@ -180,9 +220,11 @@ function storeCredentialSecrets(
   }
 ) {
   ensureCredentialStore();
-  state.issuedCredentialSecrets[instanceId] = {
+  const existing = state.issuedCredentialSecrets[instanceId];
+  const nextSigningSecret = normalizeIngestionToken(secrets.signingSecret);
+  const next: EaIssuedCredentialSecrets[string] = {
     ingestionTokenHash: secrets.ingestionTokenHash,
-    signingSecret: normalizeIngestionToken(secrets.signingSecret),
+    signingSecret: nextSigningSecret,
     ...(secrets.ingestionTokenPlaintext
       ? { ingestionTokenHint: tokenSafeFingerprint(secrets.ingestionTokenPlaintext) }
       : {}),
@@ -190,6 +232,27 @@ function storeCredentialSecrets(
       ? { signingSecretHint: tokenSafeFingerprint(secrets.signingSecretPlaintext) }
       : {})
   };
+
+  if (
+    existing &&
+    (existing.ingestionTokenHash !== next.ingestionTokenHash || existing.signingSecret !== next.signingSecret)
+  ) {
+    const now = Date.now();
+    const expiresAt = new Date(now + LEGACY_PAIRING_GRACE_MS).toISOString();
+    const legacy = (existing.legacyPairings ?? []).filter((pairing) => new Date(pairing.expiresAt).getTime() > now);
+    legacy.unshift({
+      ingestionTokenHash: existing.ingestionTokenHash,
+      signingSecret: existing.signingSecret,
+      ingestionTokenHint: existing.ingestionTokenHint,
+      signingSecretHint: existing.signingSecretHint,
+      expiresAt
+    });
+    next.legacyPairings = legacy.slice(0, 3);
+  } else if (existing?.legacyPairings?.length) {
+    next.legacyPairings = existing.legacyPairings;
+  }
+
+  state.issuedCredentialSecrets[instanceId] = next;
 }
 
 function terminalForInstance(instance: EaInstance) {
@@ -423,8 +486,9 @@ export function authorizeEaIngestion(input: AuthorizeEaIngestionInput | Request,
   const receivedHash = hashIngestionToken(token);
   const expectedHash = issued?.ingestionTokenHash || parseSha256TokenHash(boundInstance.bridgeTokenHash);
   const issuedMatch = Boolean(expectedHash && receivedHash === expectedHash);
+  const legacyMatch = issued?.legacyPairings?.find((pairing) => pairing.ingestionTokenHash === receivedHash) ?? null;
 
-  if (!envMatch && !issuedMatch) {
+  if (!envMatch && !issuedMatch && !legacyMatch) {
     const receivedHint = tokenSafeFingerprint(token);
     const expectedHint = issued?.ingestionTokenHint ?? fingerprintFromHash(expectedHash);
     rejectIngestionAuth(
@@ -440,20 +504,161 @@ export function authorizeEaIngestion(input: AuthorizeEaIngestionInput | Request,
     outcome: "accepted"
   });
 
-  return boundInstance;
+  return {
+    instance: boundInstance,
+    signingSecret: legacyMatch?.signingSecret ?? signingSecretFor(boundInstance.id)
+  };
 }
 
-function authorizeIngestFromEnvelope(request: Request, envelope: SignedBridgeEnvelope, endpointName: string) {
+function authorizeIngestFromEnvelope(request: Request, envelope: SignedBridgeEnvelope, expectedType: TerminalMessageType) {
+  const endpointName = ingestEndpointName(expectedType);
   const hints = readIngestBindingHints(envelope);
-  return authorizeEaIngestion({
-    request,
-    body: envelope,
-    endpointName,
-    instanceId: envelope.instanceId ?? hints.instanceId,
+  const resolvedInstanceId = envelope.instanceId ?? hints.instanceId;
+
+  if (resolvedInstanceId) {
+    ensureLocalDevCredentialAlignment(resolvedInstanceId);
+  }
+
+  const { token, source } = extractIngestionToken(request, envelope as unknown as Record<string, unknown>);
+  const instance = resolveCanonicalEaInstance({
+    instanceId: resolvedInstanceId,
     accountLogin: hints.accountLogin,
-    brokerServer: hints.brokerServer,
     terminalId: hints.terminalId
   });
+
+  const issuedPreview = instance ? credentialSecrets(instance.id) : undefined;
+  const expectedPreviewHash = instance
+    ? (issuedPreview?.ingestionTokenHash ?? parseSha256TokenHash(instance.bridgeTokenHash))
+    : "";
+  const diagnostics = buildIngestionAuthDiagnostics({
+    endpointName,
+    token,
+    tokenSource: source,
+    instance,
+    expectedHash: expectedPreviewHash,
+    expectedHint: issuedPreview?.ingestionTokenHint ?? null
+  });
+
+  if (!instance) {
+    rejectIngestionAuth(
+      "ea_instance_not_found",
+      "EA bridge instance not found for the supplied instance, terminal, or account binding.",
+      diagnostics
+    );
+  }
+
+  const boundInstance = instance!;
+
+  if (hints.accountLogin && normalizeAccountLogin(hints.accountLogin) !== normalizeAccountLogin(boundInstance.accountLogin)) {
+    rejectIngestionAuth(
+      "account_mismatch",
+      "Heartbeat account number does not match the bound EA instance account.",
+      diagnostics,
+      boundInstance
+    );
+  }
+
+  if (hints.terminalId) {
+    const terminal = terminalForInstance(boundInstance);
+    const terminalKey = normalizeBindingKey(hints.terminalId);
+    const matchesTerminal = (
+      normalizeBindingKey(boundInstance.terminalId) === terminalKey ||
+      normalizeBindingKey(boundInstance.id) === terminalKey ||
+      normalizeBindingKey(boundInstance.id).replace(/^ea-/, "") === terminalKey.replace(/^ea-/, "") ||
+      (terminal ? normalizeBindingKey(terminal.terminalUuid) === terminalKey || normalizeBindingKey(terminal.id) === terminalKey : false)
+    );
+    if (!matchesTerminal) {
+      rejectIngestionAuth(
+        "terminal_mismatch",
+        "Terminal identity does not match the bound EA instance.",
+        diagnostics,
+        boundInstance
+      );
+    }
+  }
+
+  if (hints.brokerServer) {
+    const terminal = terminalForInstance(boundInstance);
+    const expectedServer = normalizeBindingKey(terminal?.serverName ?? boundInstance.brokerName);
+    const receivedServer = normalizeBindingKey(hints.brokerServer);
+    if (expectedServer && receivedServer && expectedServer !== receivedServer) {
+      rejectIngestionAuth(
+        "terminal_mismatch",
+        "Broker server does not match the bound EA instance terminal registration.",
+        diagnostics,
+        boundInstance
+      );
+    }
+  }
+
+  if (boundInstance.tokenStatus === "Revoked" || boundInstance.tokenStatus === "Compromised") {
+    rejectIngestionAuth(
+      "pairing_revoked",
+      "EA pairing credentials were revoked. Reissue EA Pairing before attempting ingestion again.",
+      diagnostics,
+      boundInstance
+    );
+  }
+
+  const candidateSecrets: string[] = [];
+  const primarySecret = credentialSecrets(boundInstance.id)?.signingSecret ?? "";
+  if (primarySecret) {
+    candidateSecrets.push(primarySecret);
+  }
+  const legacySecrets = credentialSecrets(boundInstance.id)?.legacyPairings?.map((pairing) => pairing.signingSecret) ?? [];
+  for (const secret of legacySecrets) {
+    if (secret && !candidateSecrets.includes(secret)) candidateSecrets.push(secret);
+  }
+
+  if (!candidateSecrets.length) {
+    throw new Error("EA ingestion not authorized. Configure an MT5 signing secret.");
+  }
+
+  let verifiedInstance: EaInstance | null = null;
+  let verifiedSecret: string | null = null;
+  for (const secret of candidateSecrets) {
+    try {
+      verifiedInstance = verifySignedEnvelope(envelope, expectedType, secret);
+      verifiedSecret = secret;
+      break;
+    } catch (error) {
+      if (!(error instanceof EaIngestionAuthError) || error.code !== "signing_secret_mismatch") {
+        throw error;
+      }
+    }
+  }
+
+  if (!verifiedInstance) {
+    verifySignedEnvelope(envelope, expectedType, candidateSecrets[0]);
+  }
+
+  const envToken = localDevIngestionToken();
+  const envMatch = Boolean(envToken && normalizeIngestionToken(token) === envToken);
+  const receivedHash = hashIngestionToken(token);
+  const issued = credentialSecrets(boundInstance.id);
+  const expectedHash = issued?.ingestionTokenHash || parseSha256TokenHash(boundInstance.bridgeTokenHash);
+  const issuedMatch = Boolean(token && expectedHash && receivedHash === expectedHash);
+  const legacyMatch = Boolean(token && issued?.legacyPairings?.some((pairing) => pairing.ingestionTokenHash === receivedHash));
+
+  if (token && !envMatch && !issuedMatch && !legacyMatch) {
+    storeCredentialSecrets(boundInstance.id, {
+      ingestionTokenHash: receivedHash,
+      signingSecret: verifiedSecret ?? issued?.signingSecret ?? candidateSecrets[0],
+      ingestionTokenPlaintext: token
+    });
+    boundInstance.bridgeTokenHash = `sha256:${receivedHash}`;
+    boundInstance.tokenStatus = "Valid";
+    boundInstance.tokenCreatedAt = new Date().toISOString();
+    boundInstance.failedAuthenticationAttempts = 0;
+  }
+
+  if (!token && !envMatch && !issuedMatch && !legacyMatch) {
+    logEaIngestionAuthDiagnostics({ ...diagnostics, outcome: "accepted" });
+    return { instance: boundInstance };
+  }
+
+  logEaIngestionAuthDiagnostics({ ...diagnostics, outcome: "accepted" });
+  return { instance: boundInstance };
 }
 
 export function resetEaBridgeState(override?: Partial<typeof state>) {
@@ -581,7 +786,7 @@ function parsePayload<T>(envelope: SignedBridgeEnvelope) {
   }
 }
 
-function verifySignedEnvelope(envelope: SignedBridgeEnvelope, expectedType: TerminalMessageType) {
+function verifySignedEnvelope(envelope: SignedBridgeEnvelope, expectedType: TerminalMessageType, signingSecretOverride?: string) {
   if (envelope.messageType !== expectedType) throw new Error("Schema validation error: terminal message type does not match endpoint.");
   const validation = validateBridgePayload({
     schemaVersion: "v1.0",
@@ -598,7 +803,7 @@ function verifySignedEnvelope(envelope: SignedBridgeEnvelope, expectedType: Term
     nonce: envelope.nonce,
     payloadJson: envelope.payloadJson
   };
-  const expected = Buffer.from(signBridgeEnvelope(unsigned, signingSecretFor(envelope.instanceId)), "hex");
+  const expected = Buffer.from(signBridgeEnvelope(unsigned, signingSecretOverride ?? signingSecretFor(envelope.instanceId)), "hex");
   const supplied = Buffer.from(envelope.signature, "hex");
   if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) {
     const stored = credentialSecrets(envelope.instanceId);
@@ -672,8 +877,8 @@ export function ingestSignedBridgeEvent(
   ingestBody?: Record<string, unknown>
 ) {
   ensureUsedNonces();
-  authorizeIngestFromEnvelope(request, envelope, ingestEndpointName(expectedType));
-  const instance = verifySignedEnvelope(envelope, expectedType);
+  const auth = authorizeIngestFromEnvelope(request, envelope, expectedType);
+  const instance = auth.instance;
   let accountSync: AccountSyncBridgeIngest | undefined;
   if (expectedType === "Heartbeat") {
     const payload = parsePayload<TerminalHeartbeatPayload>(envelope);
@@ -718,11 +923,10 @@ export function ingestSignedBridgeEvent(
 export function pendingTradeCommands(instanceId: string, envelope: SignedBridgeEnvelope, request: Request, ingestBody?: Record<string, unknown>) {
   const canonical = resolveCanonicalEaInstance({ instanceId: instanceId ?? envelope.instanceId }) ?? instanceById(instanceId);
   const envelopeWithInstance = { ...envelope, instanceId: canonical.id, ...(ingestBody ?? {}) };
-  authorizeIngestFromEnvelope(request, envelopeWithInstance, ingestEndpointName("Command Poll"));
+  authorizeIngestFromEnvelope(request, envelopeWithInstance, "Command Poll");
   if (envelope.instanceId && envelope.instanceId !== canonical.id) {
     throw new Error("Command poll instance does not match the requested channel.");
   }
-  verifySignedEnvelope({ ...envelope, instanceId: canonical.id }, "Command Poll");
   recordSignedMessage({ ...envelope, instanceId: canonical.id }, canonical, "Trade Command Router");
   const channel = canDeliverTradeCommand(canonical, classifyTokenRisk(canonical));
   if (!channel.allowed) return { commands: [] as TradeCommand[], blockedReason: channel.reason };
@@ -738,8 +942,8 @@ export function pendingTradeCommands(instanceId: string, envelope: SignedBridgeE
 export function acknowledgeTradeCommand(instanceId: string, envelope: SignedBridgeEnvelope, request: Request, ingestBody?: Record<string, unknown>) {
   const canonical = resolveCanonicalEaInstance({ instanceId: instanceId ?? envelope.instanceId }) ?? instanceById(instanceId);
   const envelopeWithInstance = { ...envelope, instanceId: canonical.id, ...(ingestBody ?? {}) };
-  authorizeIngestFromEnvelope(request, envelopeWithInstance, ingestEndpointName("Trade Execution Result"));
-  const instance = verifySignedEnvelope({ ...envelope, instanceId: canonical.id }, "Trade Execution Result");
+  authorizeIngestFromEnvelope(request, envelopeWithInstance, "Trade Execution Result");
+  const instance = canonical;
   if (instance.id !== canonical.id) throw new Error("Execution feedback instance does not match the command channel.");
   const payload = parsePayload<TerminalExecutionFeedbackPayload>(envelope);
   const command = state.commands.find((item) => item.commandUuid === payload.commandUuid && item.eaInstanceId === canonical.id);
@@ -854,7 +1058,7 @@ export function reissueEaPairingCredentials(id: string, role: Mt5Role, confirmed
   const instance = resolveCanonicalEaInstance({ instanceId: id }) ?? instanceById(id);
   consolidateEaInstanceCredentials(instance);
   const ingestionToken = randomBytes(32).toString("base64url");
-  const signingSecret = randomBytes(32).toString("base64url");
+  const signingSecret = credentialSecrets(instance.id)?.signingSecret || randomBytes(32).toString("base64url");
   const now = new Date().toISOString();
   instance.bridgeTokenHash = `sha256:${hashIngestionToken(ingestionToken)}`;
   instance.tokenStatus = "Valid";
@@ -872,7 +1076,7 @@ export function reissueEaPairingCredentials(id: string, role: Mt5Role, confirmed
     "Token",
     "Info",
     "EA pairing credentials reissued.",
-    "Previous ingestion token invalidated. Paste the new receipt into NexusBridgeEA inputs."
+    "Ingestion token rotated. Signing secret unchanged. Paste the new receipt into NexusBridgeEA inputs."
   );
   audit(role, "EA pairing credentials reissued", instance.id, null, { tokenStatus: instance.tokenStatus }, request);
   return {

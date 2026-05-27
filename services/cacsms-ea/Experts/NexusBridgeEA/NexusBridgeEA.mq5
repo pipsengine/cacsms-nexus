@@ -1,5 +1,5 @@
 #property strict
-#property version   "2.11"
+#property version   "2.12"
 #property description "Cacsms Nexus signed MT5 telemetry and guarded command bridge."
 
 #include "Cacsms/NexusConfig.mqh"
@@ -27,8 +27,8 @@ int OnInit()
 {
    if(IngestionToken == "" || SigningSecret == "")
    {
-      Alert("Nexus Bridge EA: open EA Properties and paste IngestionToken and SigningSecret from your MT5 Control Center onboarding receipt. The EA cannot run without them.");
-      Print("Nexus Bridge requires IngestionToken and SigningSecret inputs from the onboarding receipt.");
+      Alert("Nexus Bridge EA: open EA Properties and paste IngestionToken and SigningSecret from your Nexus EA Bridge pairing receipt (Reissue EA Pairing in Nexus UI). The EA cannot run without them.");
+      Print("Nexus Bridge requires IngestionToken and SigningSecret inputs from the EA Bridge pairing receipt.");
       return INIT_PARAMETERS_INCORRECT;
    }
 
@@ -59,6 +59,16 @@ int OnInit()
       StringLen(g_nexusConfig.signingSecret),
       StringSubstr(g_nexusConfig.signingSecret, 0, MathMin(4, StringLen(g_nexusConfig.signingSecret))),
       StringSubstr(g_nexusConfig.signingSecret, MathMax(0, StringLen(g_nexusConfig.signingSecret) - 4)));
+
+   string pairing_response;
+   if(!NexusTestPairing(pairing_response))
+   {
+      Print("Nexus Bridge pairing test failed. The EA will remain idle until IngestionToken and SigningSecret match the active EA Bridge receipt.");
+      if(StringLen(pairing_response) > 0)
+         Print("Nexus Bridge pairing response: ", pairing_response);
+      return INIT_FAILED;
+   }
+   Print("Nexus Bridge pairing test succeeded. Signed ingestion is authorized.");
 
    int timerSeconds = MathMin(g_nexusConfig.heartbeatIntervalSeconds, g_nexusConfig.commandPollIntervalSeconds);
    EventSetTimer(MathMax(1, timerSeconds));

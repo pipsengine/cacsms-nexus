@@ -93,6 +93,7 @@ export type EaPairingReceipt = {
   signingSecret: string;
   nexusBaseUrl: string;
   state: "Reissued Pairing Credentials";
+  test?: EaPairingTestResult;
 };
 
 export type EaIngestionAuthErrorCode =

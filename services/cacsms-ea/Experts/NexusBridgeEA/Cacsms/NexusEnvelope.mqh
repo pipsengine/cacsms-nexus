@@ -54,4 +54,17 @@ bool NexusSendSignedEnvelope(const string message_type, const string payload_jso
    return NexusHttpPost(NexusJoinUrl(g_nexusConfig.baseUrl, endpoint), headers, body, response_body, http_status);
 }
 
+bool NexusTestPairing(string &response_body)
+{
+   string endpoint = "/api/mt5/ea-bridge/instances/" + g_nexusConfig.instanceId + "/test-pairing";
+   string body = "{\"confirmed\":true,\"ingestionToken\":\"" + NexusJsonEscape(g_nexusConfig.ingestionToken) +
+      "\",\"signingSecret\":\"" + NexusJsonEscape(g_nexusConfig.signingSecret) + "\"}";
+   string headers = "Content-Type: application/json\r\n";
+   int http_status = 0;
+   bool ok = NexusHttpPost(NexusJoinUrl(g_nexusConfig.baseUrl, endpoint), headers, body, response_body, http_status);
+   if(ok && StringFind(response_body, "\"accepted\":true") >= 0)
+      return true;
+   return false;
+}
+
 #endif

@@ -4,7 +4,7 @@ import {
   Activity, AlertTriangle, Bot, Cable, ChevronRight, Clock3, DatabaseZap, KeyRound, Menu, PowerOff, RefreshCw, RotateCcw,
   Search, Send, Server, ShieldCheck, Stethoscope, Workflow
 } from "lucide-react";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
 
 import { Badge } from "@/components/ui/badge";
@@ -46,6 +46,11 @@ export function EaBridgeDashboard() {
   const [notice, setNotice] = useState<string | null>(null);
   const [pairingReceipt, setPairingReceipt] = useState<EaPairingReceipt | null>(null);
   const [pairingTestResult, setPairingTestResult] = useState<EaPairingTestResult | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
   function setExpandedId(id: string | null) {
     updateExpandedId(id);
     if (id) setSelectedId(id);
@@ -74,8 +79,19 @@ export function EaBridgeDashboard() {
     { label: "Feedback received", status: feedbackCount < data.commands.filter((command) => command.executionStatus === "Executed").length ? "Degraded" : "Healthy", detail: `${feedbackCount} confirmed` }
   ];
 
+  async function copyPairingReceipt(receipt: EaPairingReceipt) {
+    const text = [
+      `NexusBaseUrl=${receipt.nexusBaseUrl}`,
+      `EaInstanceId=${receipt.eaInstanceId}`,
+      `IngestionToken=${receipt.ingestionToken}`,
+      `SigningSecret=${receipt.signingSecret}`
+    ].join("\n");
+    await navigator.clipboard.writeText(text);
+    setNotice("Pairing receipt copied to clipboard. Paste into NexusBridgeEA inputs inside MT5.");
+  }
+
   async function reissuePairing(instanceId: string, label: string) {
-    if (!window.confirm(`Confirm ${label.toLowerCase()}? Previous EA pairing tokens will stop working.`)) return;
+    if (!window.confirm(`Confirm ${label.toLowerCase()}? The previous receipt remains accepted only for a short grace window.`)) return;
     setNotice(null);
     setPairingTestResult(null);
     try {
@@ -83,8 +99,20 @@ export function EaBridgeDashboard() {
         path: `/api/mt5/ea-bridge/instances/${instanceId}/reissue-pairing`,
         body: { confirmed: true }
       });
-      setPairingReceipt(result as unknown as EaPairingReceipt);
-      setNotice(`${label} completed. Copy the new receipt below into NexusBridgeEA inputs.`);
+      const receipt = result as unknown as EaPairingReceipt;
+      setPairingReceipt(receipt);
+      const embeddedTest = receipt.test ?? null;
+      if (embeddedTest) {
+        setPairingTestResult(embeddedTest);
+        if (embeddedTest.accepted) {
+          setNotice(`${label} completed and verified. Copy the receipt below into NexusBridgeEA inputs.`);
+        } else {
+          setNotice(`${label} completed, but verification failed: ${embeddedTest.code ?? "failed"}.`);
+        }
+      } else {
+        setNotice(`${label} completed. Copy the new receipt below into NexusBridgeEA inputs.`);
+      }
+      await query.refetch();
     } catch (error) {
       setPairingReceipt(null);
       setNotice(error instanceof Error ? error.message : "EA pairing reissue failed.");
@@ -132,6 +160,39 @@ export function EaBridgeDashboard() {
       setNotice(error instanceof Error ? error.message : "EA bridge action failed.");
     }
   }
+
+  async function sendTestOrder() {
+    if (!selected) {
+      setNotice("No EA instance is selected for this action yet.");
+      return;
+    }
+    const defaultSymbol = selected.symbolScope?.[0] ?? "";
+    const symbol = window.prompt("Symbol to send (must exist in Market Watch and match EA symbol scope):", defaultSymbol)?.trim() ?? "";
+    if (!symbol) return;
+    const volumeRaw = window.prompt("Lot size (volume):", "0.01")?.trim() ?? "";
+    const volume = Number.parseFloat(volumeRaw);
+    if (!Number.isFinite(volume) || volume <= 0) {
+      setNotice("Invalid volume.");
+      return;
+    }
+    if (!window.confirm("Confirm sending a test order command to this EA? The EA will only execute it if EnableCommandExecution is enabled in EA inputs.")) {
+      return;
+    }
+    setNotice(null);
+    try {
+      const result = await query.action.mutateAsync({
+        path: `/api/mt5/ea-bridge/instances/${selected.id}/test-order`,
+        body: { confirmed: true, symbol, volume, direction: "Buy", commandType: "Market", enableTradingChannel: true }
+      });
+      const accepted = Boolean((result as any)?.accepted);
+      setNotice(accepted
+        ? "Test order queued. Ensure PollApprovedCommands is enabled in the EA inputs to receive it."
+        : (result as any)?.reason ?? "Test order was not accepted.");
+      await query.refetch();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Failed to send test order.");
+    }
+  }
   const actions = [
     { label: "Sync EA Instances", icon: DatabaseZap, path: "/api/mt5/ea-bridge/instances/sync", allowed: data.permissions.canSync },
     { label: "Run Bridge Diagnostics", icon: Stethoscope, path: "/api/mt5/ea-bridge/diagnostics", allowed: data.permissions.canDiagnostics },
@@ -149,10 +210,11 @@ export function EaBridgeDashboard() {
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">MT5 Infrastructure &amp; Broker Connectivity / EA Bridge</p>
             <div className="mt-2 flex flex-wrap items-center gap-2"><h1 className="text-3xl font-semibold tracking-tight text-slate-950">EA Bridge</h1><Badge variant={query.streamConnected ? "success" : "warning"}><Activity className="mr-1 h-3 w-3" />{query.streamConnected ? "Live stream" : "Reconnecting"}</Badge><Badge variant="purple">{data.bridgeHealth.score}/100 {data.bridgeHealth.rating}</Badge></div>
             <p className="mt-2 max-w-4xl text-sm text-slate-600">Real-time communication bridge between MT5 Expert Advisors, trading terminals, execution services, and Nexus AI engines.</p>
-            <p className="mt-3 text-xs text-slate-500">Mode: {data.meta.monitoringMode} | Role: {data.permissions.role} | Selected EA: {selected?.eaName ?? "None"} | Updated: {time(data.meta.timestamp)}</p>
+            <p className="mt-3 text-xs text-slate-500">Mode: {data.meta.monitoringMode} | Role: {data.permissions.role} | Selected EA: {selected?.eaName ?? "None"} | Updated: {time(data.meta.timestamp)} ({Math.max(0, Math.floor((now - new Date(data.meta.timestamp).getTime()) / 1000))}s ago)</p>
           </div>
           <div className="hidden flex-wrap justify-end gap-2 sm:flex">
             <Button variant="outline" onClick={() => query.refetch()}><RefreshCw className="h-4 w-4" />Refresh Bridge</Button>
+            <Button variant="outline" disabled={!data.permissions.canTradeControl || !selected || query.action.isPending} onClick={sendTestOrder}><Send className="h-4 w-4" />Send Test Order</Button>
             {actions.map(({ label, icon: Icon, path, allowed, reissue }) => (
               <Button
                 key={label}
@@ -193,7 +255,10 @@ export function EaBridgeDashboard() {
               disabled={query.action.isPending}
               onClick={() => testPairing(pairingReceipt)}
             >
-              Test Pairing
+              Retest Pairing
+            </Button>
+            <Button variant="outline" disabled={query.action.isPending} onClick={() => copyPairingReceipt(pairingReceipt)}>
+              Copy Receipt
             </Button>
             {pairingTestResult ? (
               <Badge variant={pairingTestResult.accepted ? "success" : "destructive"}>
