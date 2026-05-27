@@ -7,7 +7,7 @@ import {
   dispatchTradeCommandToEaBridge,
   resolveEaInstanceForDispatch
 } from "../../_lib/ea-command-dispatch";
-import { bridgeInstances } from "../../ea-bridge/_lib/store";
+import { autonomousEnsureTradingChannel, bridgeInstances } from "../../ea-bridge/_lib/store";
 import { ingestExecutionFromOrderRouter } from "../../slippage-monitor/_lib/store";
 import { resolveMt5Role } from "../../_lib/access";
 import type { AutonomousPipelineSource } from "../../_lib/autonomous-orchestrator";
@@ -322,6 +322,8 @@ function ingestStrategySignalInternal(input: StrategySignalInput, role: Mt5Role,
   if (!Number.isFinite(input.volume) || input.volume <= 0) throw new Error("Volume must be a positive number.");
 
   const { instance, channel } = resolveRoutingChannel(input);
+  autonomousEnsureTradingChannel(instance.id, role, request);
+  syncChannelsFromEaBridge();
   const signalId = input.signalId?.trim() || `SIG-AUTO-${Date.now()}`;
   const orderId = `ORD-SIG-${Date.now()}`;
   const route = buildStrategySignalRoute({ signal: { ...input, symbol }, eaInstance: instance, signalId, orderId });
@@ -472,6 +474,10 @@ export function dispatchRouteToEa(id: string, role: Mt5Role, confirmed: boolean,
   if (route.executionStatus === "Executed") {
     throw new Error("Executed routes cannot be dispatched again.");
   }
+
+  syncChannelsFromEaBridge();
+  autonomousEnsureTradingChannel(route.eaInstanceId, role, request);
+  syncChannelsFromEaBridge();
 
   const validation = validatePreRoute(routeContext(route));
   if (!validation.approved) {

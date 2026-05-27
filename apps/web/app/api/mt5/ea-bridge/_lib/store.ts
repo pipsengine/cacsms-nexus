@@ -895,7 +895,7 @@ export function ingestSignedBridgeEvent(
       if (instance.knownIpAddress === "Pending verification") instance.knownIpAddress = remoteAddress;
       instance.currentIpAddress = remoteAddress;
     }
-    if (!payload.tradingEnabled) instance.tradingChannelEnabled = false;
+    syncTradingChannelFromTelemetry(instance, { tradingEnabled: payload.tradingEnabled, brokerConnected: payload.brokerConnected });
     if (payload.quoteSymbol?.trim()) {
       const scoped = payload.quoteSymbol.trim();
       if (!instance.symbolScope.includes(scoped)) {
@@ -1231,6 +1231,47 @@ export function testEaPairingCredentials(
     }),
     heartbeat: result
   };
+}
+
+export function syncTradingChannelFromTelemetry(instance: EaInstance, input?: { tradingEnabled?: boolean; brokerConnected?: boolean }) {
+  const tradingEnabled = input?.tradingEnabled ?? instance.tradingChannelEnabled;
+  const brokerConnected = input?.brokerConnected ?? instance.connectionStatus === "Healthy";
+
+  if (!tradingEnabled || !brokerConnected) {
+    instance.tradingChannelEnabled = false;
+    return {
+      enabled: false,
+      reason: !brokerConnected ? "Broker disconnected." : "MT5 account trading disabled."
+    };
+  }
+
+  const tokenRisk = classifyTokenRisk(instance);
+  if (tokenRisk === "High" || tokenRisk === "Critical") {
+    instance.tradingChannelEnabled = false;
+    return { enabled: false, reason: "Token risk policy blocks commands." };
+  }
+
+  if (instance.connectionStatus !== "Healthy") {
+    return { enabled: instance.tradingChannelEnabled, reason: "Bridge connection is not healthy." };
+  }
+
+  instance.tradingChannelEnabled = true;
+  return { enabled: true, reason: "Trading channel aligned with live MT5 telemetry." };
+}
+
+export function autonomousEnsureTradingChannel(instanceId: string, role: Mt5Role, request?: Request) {
+  const instance = bridgeInstance(instanceId);
+  if (instance.tradingChannelEnabled) return { enabled: true, reason: "Trading channel already enabled." };
+
+  const synced = syncTradingChannelFromTelemetry(instance, {
+    tradingEnabled: true,
+    brokerConnected: instance.connectionStatus === "Healthy"
+  });
+  if (synced.enabled) {
+    audit(role, "Autonomous EA trading channel enabled", instanceId, false, true, request);
+    addLog(instance, "Risk", "Info", "Trading channel autonomously enabled from healthy bridge telemetry.", synced.reason);
+  }
+  return synced;
 }
 
 export function setBridgeTrading(id: string, enabled: boolean, role: Mt5Role, confirmed: boolean, request?: Request) {

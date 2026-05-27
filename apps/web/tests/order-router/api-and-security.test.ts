@@ -1,5 +1,6 @@
 import {describe, expect, it, beforeEach } from "vitest";
 import { seedEaBridgeStore, seedOrderRouterStore } from "@/tests/helpers/seed-api-stores";
+import { buildEaBridgeResponse, setBridgeTrading } from "@/app/api/mt5/ea-bridge/_lib/store";
 import {
   applyBridgeExecutionFeedback,
   buildOrderRouterResponse,
@@ -65,6 +66,17 @@ describe("Order Router operational controls", () => {
     expect(result.accepted).toBe(true);
     expect(result.commandUuid).toBeTruthy();
     expect(buildOrderRouterResponse("Trading Admin").routes[0]?.routingStatus).toBe("Routed");
+  });
+
+  it("autonomously routes test orders when the EA bridge channel was disabled", () => {
+    seedOrderRouterStore();
+    seedEaBridgeStore();
+    setBridgeTrading("ea-ld4-01", false, "Super Admin", true);
+    expect(buildEaBridgeResponse("Infrastructure Admin").instances.find((i) => i.id === "ea-ld4-01")?.tradingChannelEnabled).toBe(false);
+
+    const result = submitTestOrderToEa({ eaInstanceId: "ea-ld4-01", symbol: "EURUSD", volume: 0.01 }, "Trading Admin", true);
+    expect(result.accepted).toBe(true);
+    expect(buildEaBridgeResponse("Infrastructure Admin").instances.find((i) => i.id === "ea-ld4-01")?.tradingChannelEnabled).toBe(true);
   });
 
   it("updates routed orders when EA bridge execution feedback arrives", () => {

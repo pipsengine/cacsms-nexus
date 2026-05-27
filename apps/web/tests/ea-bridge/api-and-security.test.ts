@@ -166,6 +166,7 @@ describe("EA bridge domain controls", () => {
         latencyMs: 29
       }, nonce);
       expect(ingestSignedBridgeEvent(heartbeat, "Heartbeat", request).accepted).toBe(true);
+      expect(publicBridgeInstance("ea-ld4-01").tradingChannelEnabled).toBe(true);
       expect(() => ingestSignedBridgeEvent(heartbeat, "Heartbeat", request)).toThrow(/Nonce replay/);
       const tampered = signedEnvelope("Heartbeat", {
         terminalName: "MT5-Live-01",
