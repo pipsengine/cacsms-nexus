@@ -1,6 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { seedMt5ControlCenterStore } from "@/tests/helpers/seed-api-stores";
-import { createMt5Seed } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/data/mt5-control-center.mock";
 
 import {
   buildControlCenter,
@@ -14,7 +13,6 @@ import {
 } from "@/app/api/mt5/_lib/store";
 import { provisionBrokerConnectionFromRegistration } from "@/app/api/mt5/broker-connections/_lib/store";
 import { resetBrokerConnectionsState } from "@/app/api/mt5/broker-connections/_lib/store";
-import { createBrokerConnectionsSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/broker-connections/data/broker-connections.mock";
 
 describe("MT5 control API domain", () => {
   beforeEach(() => seedMt5ControlCenterStore());
@@ -42,8 +40,8 @@ describe("MT5 control API domain", () => {
   });
 
   it("registers a broker and mirrors it into broker connections", () => {
-    resetMt5ControlCenterState(createMt5Seed());
-    resetBrokerConnectionsState(createBrokerConnectionsSeed());
+    resetMt5ControlCenterState();
+    resetBrokerConnectionsState();
     const broker = registerBroker({
       id: "broker-custom",
       brokerName: "Custom Broker",

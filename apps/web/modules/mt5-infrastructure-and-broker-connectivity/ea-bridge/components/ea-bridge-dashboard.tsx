@@ -83,7 +83,7 @@ export function EaBridgeDashboard() {
         path: `/api/mt5/ea-bridge/instances/${instanceId}/reissue-pairing`,
         body: { confirmed: true }
       });
-      setPairingReceipt(result as EaPairingReceipt);
+      setPairingReceipt(result as unknown as EaPairingReceipt);
       setNotice(`${label} completed. Copy the new receipt below into NexusBridgeEA inputs.`);
     } catch (error) {
       setPairingReceipt(null);
@@ -103,14 +103,14 @@ export function EaBridgeDashboard() {
           signingSecret: receipt.signingSecret
         }
       });
-      setPairingTestResult(result as EaPairingTestResult);
+      setPairingTestResult(result as unknown as EaPairingTestResult);
       setNotice("Test Pairing succeeded. Backend accepted a signed heartbeat with the displayed credentials.");
       await query.refetch();
     } catch (error) {
       const bridgeError = error instanceof EaBridgeActionError ? error : null;
       setPairingTestResult({
         accepted: false,
-        code: bridgeError?.code ?? "failed",
+        code: bridgeError?.code ?? "token_mismatch",
         error: error instanceof Error ? error.message : "Test Pairing failed.",
         diagnostics: bridgeError?.diagnostics
       });

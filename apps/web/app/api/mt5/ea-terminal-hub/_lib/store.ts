@@ -10,7 +10,6 @@ import {
   riskFromHealth,
   validateTerminalRegistration
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-terminal-hub/algorithms/ea-terminal-hub.algorithms";
-import { createEaTerminalHubSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-terminal-hub/data/ea-terminal-hub.mock";
 import type {
   ActionResponse,
   ConnectTerminalsRequest,
@@ -22,7 +21,7 @@ import type {
   Mt5TerminalLink
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-terminal-hub/types/ea-terminal-hub.types";
 import { resolveMt5Role } from "../../_lib/access";
-import { bindPersistedMt5State } from "../../_lib/persistence";
+import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
 
 import {
   applyLiveStateToTerminals,
@@ -35,21 +34,20 @@ import { updateTerminalMonitorPaths } from "../../terminal-status/_lib/store";
 import { deriveMt5IncludePathFromExperts, resolveCacsmsEaRoot, assertWritableMt5Target, resolveMt5FolderLayout } from "./paths";
 import path from "node:path";
 
-const seed = createEaTerminalHubSeed();
-
 const state = bindPersistedMt5State("ea-terminal-hub", () => ({
-  terminals: seed.terminals,
-  activeTerminalId: seed.activeTerminalId,
+  terminals: [] as Mt5TerminalLink[],
+  activeTerminalId: null as string | null,
   systemFolder: null as Awaited<ReturnType<typeof scanCacsmsEaFolder>> | null,
   drift: [] as FolderDriftItem[],
   audits: [] as AuditRecord[],
   lastUpdatedAt: new Date().toISOString()
 }));
 
-export function resetEaTerminalHubState(override?: ReturnType<typeof createEaTerminalHubSeed>) {
-  const next = override ?? createEaTerminalHubSeed();
-  state.terminals = next.terminals;
-  state.activeTerminalId = next.activeTerminalId;
+await ensureMt5ModuleHydrated("ea-terminal-hub");
+
+export function resetEaTerminalHubState(override?: Partial<typeof state>) {
+  state.terminals = override?.terminals ?? [];
+  state.activeTerminalId = override?.activeTerminalId ?? null;
   state.systemFolder = null;
   state.drift = [];
   state.audits = [];
@@ -479,7 +477,7 @@ export function provisionEaTerminalHubFromOnboarding(input: { terminal: Terminal
     input.terminal.brokerName,
     input.terminal.accountLogin,
     input.terminal.hostMachine,
-    input.terminal.region ?? "Unassigned",
+    input.terminal.serverName ?? "Unassigned",
     input.terminalPath ?? "Pending terminal installation",
     input.mt5DataPath ?? null
   );

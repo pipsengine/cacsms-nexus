@@ -8,12 +8,7 @@ import { POST as registerBrokerRoute } from "@/app/api/mt5/brokers/route";
 import { buildControlCenter, getAccounts, getBrokers, getTerminals } from "@/app/api/mt5/_lib/store";
 import { POST as onboardTerminalRoute } from "@/app/api/mt5/onboarding/terminals/route";
 import { buildTerminalStatusResponse, terminalRecord } from "@/app/api/mt5/terminal-status/_lib/store";
-import { createAccountSyncSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/account-sync/data/account-sync.mock";
-import { createBrokerConnectionsSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/broker-connections/data/broker-connections.mock";
-import { createEaBridgeSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-bridge/data/ea-bridge.mock";
-import { createEaTerminalHubSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-terminal-hub/data/ea-terminal-hub.mock";
-import { createMt5Seed } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/data/mt5-control-center.mock";
-import { createTerminalStatusSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/terminal-status/data/terminal-status.mock";
+import { createEaBridgeSeed } from "@/tests/fixtures/ea-bridge.fixture";
 import type { SignedBridgeEnvelope } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-bridge/types/ea-bridge.types";
 import type { TerminalOnboardingInput, TerminalOnboardingReceipt } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/types/mt5-control-center.types";
 import { resetAccountSyncState } from "@/app/api/mt5/account-sync/_lib/store";
@@ -29,12 +24,12 @@ const adminHeaders = {
 };
 
 function resetInfrastructureStores() {
-  resetMt5ControlCenterState(createMt5Seed());
-  resetBrokerConnectionsState(createBrokerConnectionsSeed());
-  resetAccountSyncState(createAccountSyncSeed());
-  resetTerminalStatusState(createTerminalStatusSeed());
-  resetEaBridgeState(createEaBridgeSeed());
-  resetEaTerminalHubState(createEaTerminalHubSeed());
+  resetMt5ControlCenterState();
+  resetBrokerConnectionsState();
+  resetAccountSyncState();
+  resetTerminalStatusState();
+  resetEaBridgeState();
+  resetEaTerminalHubState();
 }
 
 describe("infrastructure registration cross-store provisioning", () => {
@@ -47,7 +42,7 @@ describe("infrastructure registration cross-store provisioning", () => {
       body: JSON.stringify({
         brokerName: "IC Markets",
         brokerCode: "ICM",
-        mt5ServerName: "ICMarketsSC-MT5",
+        mt5ServerName: "ICMarketsSC-Demo",
         serverRegion: "London",
         connectionMode: "MT5 Gateway",
         confirmed: true
@@ -60,7 +55,7 @@ describe("infrastructure registration cross-store provisioning", () => {
     expect(getBrokers()[0]?.id).toBe(broker.id);
     expect(brokerConnections()).toHaveLength(1);
     expect(brokerConnections()[0]?.id).toBe(broker.id);
-    expect(brokerConnections()[0]?.mt5ServerName).toBe("ICMarketsSC-MT5");
+    expect(brokerConnections()[0]?.mt5ServerName).toBe("ICMarketsSC-Demo");
 
     const controlCenter = buildControlCenter("Infrastructure Admin");
     const brokerDashboard = buildBrokerConnectionsResponse("Infrastructure Admin");
@@ -193,6 +188,8 @@ describe("infrastructure registration cross-store provisioning", () => {
 
     expect(getTerminals()).toHaveLength(0);
     expect(accounts()).toHaveLength(1);
+    const { releaseIncompleteOnboardingBindings } = await import("@/app/api/mt5/_lib/onboarding-cleanup");
+    releaseIncompleteOnboardingBindings({ accountLogin, terminalUuid });
 
     const response = await onboardTerminalRoute(new Request("http://localhost/api/mt5/onboarding/terminals", {
       method: "POST",
@@ -215,6 +212,10 @@ describe("infrastructure registration cross-store provisioning", () => {
       } satisfies TerminalOnboardingInput)
     }));
 
+    if (response.status !== 201) {
+      const payload = await response.json() as { error?: string };
+      throw new Error(`Expected 201 but got ${response.status}: ${payload.error ?? "unknown error"}`);
+    }
     expect(response.status).toBe(201);
     const receipt = await response.json() as TerminalOnboardingReceipt;
     expect(receipt.terminal.terminalUuid).toBe(terminalUuid);
@@ -243,8 +244,8 @@ describe("infrastructure registration cross-store provisioning", () => {
     const terminalUuid = "CACSMS-MT5-0102";
 
     const { registerTerminal, bindRegisteredTerminalAccount } = await import("@/app/api/mt5/_lib/store");
-    resetEaBridgeState(createEaBridgeSeed());
-    resetTerminalStatusState(createTerminalStatusSeed());
+    resetEaBridgeState();
+    resetTerminalStatusState();
 
     const terminal = registerTerminal({
       terminalUuid,

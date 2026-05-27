@@ -64,9 +64,9 @@ describe("Latency Monitor dashboard", () => {
     );
 
     await screen.findByRole("button", { name: metric.metricId });
-    fireEvent.change(screen.getByLabelText("Search metrics"), { target: { value: metric.broker } });
+    fireEvent.change(screen.getByLabelText("Search metrics"), { target: { value: metric.broker! } });
 
     const table = within(screen.getByRole("table", { name: "Latency metrics" }));
-    expect((await table.findAllByText(metric.broker)).length).toBeGreaterThan(0);
+    expect((await table.findAllByText(metric.broker!)).length).toBeGreaterThan(0);
   }, 15000);
 });

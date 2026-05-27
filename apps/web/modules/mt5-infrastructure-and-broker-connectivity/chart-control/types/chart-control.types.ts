@@ -4,6 +4,8 @@ export type ChartTone = "Healthy" | "Watch" | "Degraded" | "Critical" | "Offline
 export type ChartSeverity = "Info" | "Warning" | "Critical";
 export type Timeframe = "M1" | "M5" | "M15" | "H1" | "H4" | "D1";
 
+export const timeframes: Timeframe[] = ["M1", "M5", "M15", "H1", "H4", "D1"];
+
 export type Candle = {
   timestamp: string;
   open: number;

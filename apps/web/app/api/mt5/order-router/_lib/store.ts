@@ -1,24 +1,31 @@
 import type { AuditRecord, Mt5Role } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/types/mt5-control-center.types";
 import { calculateRoutingHealth, duplicateProtection, evaluateRetrySafety, selectSmartRoute, validatePreRoute } from "@/modules/mt5-infrastructure-and-broker-connectivity/order-router/algorithms/order-router.algorithms";
-import { createOrderRouterSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/order-router/data/order-router.mock";
 import type { OrderRoute, RouterLog, RouterResponse } from "@/modules/mt5-infrastructure-and-broker-connectivity/order-router/types/order-router.types";
 import { resolveMt5Role } from "../../_lib/access";
-import { bindPersistedMt5State } from "../../_lib/persistence";
+import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
 
-const seed = createOrderRouterSeed();
 const state = bindPersistedMt5State("order-router", () => ({
-  ...seed,
+  routes: [] as OrderRoute[],
+  channels: [] as any[],
+  blockedOrders: [] as any[],
+  feedback: [] as any[],
+  logs: [] as RouterLog[],
+  diagnostics: [] as any[],
   audits: [] as AuditRecord[],
   routingPaused: false,
   emergencyStopActive: false,
   lastSyncAt: new Date().toISOString()
 }));
 
-export function resetOrderRouterState(override?: ReturnType<typeof createOrderRouterSeed>) {
-  const next = override ?? createOrderRouterSeed();
-  for (const key of Object.keys(next) as (keyof typeof next)[]) {
-    (state as Record<string, unknown>)[key as string] = next[key];
-  }
+await ensureMt5ModuleHydrated("order-router");
+
+export function resetOrderRouterState(override?: Partial<typeof state>) {
+  state.routes = override?.routes ?? [];
+  state.channels = (override as any)?.channels ?? [];
+  state.blockedOrders = (override as any)?.blockedOrders ?? [];
+  state.feedback = (override as any)?.feedback ?? [];
+  state.logs = override?.logs ?? [];
+  state.diagnostics = (override as any)?.diagnostics ?? [];
   state.audits = [];
   state.routingPaused = false;
   state.emergencyStopActive = false;

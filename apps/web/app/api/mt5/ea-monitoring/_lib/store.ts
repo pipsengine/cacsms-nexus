@@ -1,15 +1,20 @@
 import type { AuditRecord, Mt5Role, ScoreResult } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/types/mt5-control-center.types";
-import { createEaMonitoringSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-monitoring/data/ea-monitoring.mock";
 import type {
   ActionResponse,
   AiDiagnosticsResponse,
   AnalyticsResponse,
   AuditResponse,
   CommandsResponse,
+  EaAnalyticsPoint,
+  EaCommand,
+  EaExceptionRecord,
   EaInstance,
+  EaLogRecord,
   EaMonitoringSummaryResponse,
+  EaStrategyBinding,
   ExceptionsResponse,
   ExportRequest,
+  AiEaDiagnostic,
   InstanceResponse,
   InstancesResponse,
   LogsResponse,
@@ -20,43 +25,42 @@ import type {
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-monitoring/types/ea-monitoring.types";
 import { buildWorkflow, eaHealthScore, readinessValidation, strategyBindingIntegrity, suspiciousBehavior } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-monitoring/algorithms/ea-monitoring.algorithms";
 import { resolveMt5Role } from "../../_lib/access";
-import { bindPersistedMt5State } from "../../_lib/persistence";
-
-const seed = createEaMonitoringSeed();
+import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
 
 type EaMonitoringState = {
   instances: EaInstance[];
-  commands: ReturnType<typeof createEaMonitoringSeed>["commands"];
-  bindings: ReturnType<typeof createEaMonitoringSeed>["bindings"];
-  logs: ReturnType<typeof createEaMonitoringSeed>["logs"];
-  exceptions: ReturnType<typeof createEaMonitoringSeed>["exceptions"];
-  analytics: ReturnType<typeof createEaMonitoringSeed>["analytics"];
-  diagnostics: ReturnType<typeof createEaMonitoringSeed>["diagnostics"];
+  commands: EaCommand[];
+  bindings: EaStrategyBinding[];
+  logs: EaLogRecord[];
+  exceptions: EaExceptionRecord[];
+  analytics: EaAnalyticsPoint[];
+  diagnostics: AiEaDiagnostic[];
   audit: AuditRecord[];
   lastSyncAt: string;
 };
 
 const state = bindPersistedMt5State<EaMonitoringState>("ea-monitoring", () => ({
-  instances: seed.instances,
-  commands: seed.commands,
-  bindings: seed.bindings,
-  logs: seed.logs,
-  exceptions: seed.exceptions,
-  analytics: seed.analytics,
-  diagnostics: seed.diagnostics,
+  instances: [],
+  commands: [],
+  bindings: [],
+  logs: [],
+  exceptions: [],
+  analytics: [],
+  diagnostics: [],
   audit: [],
   lastSyncAt: new Date().toISOString()
 }));
 
-export function resetEaMonitoringState(override?: ReturnType<typeof createEaMonitoringSeed>) {
-  const next = override ?? createEaMonitoringSeed();
-  state.instances = next.instances;
-  state.commands = next.commands;
-  state.bindings = next.bindings;
-  state.logs = next.logs;
-  state.exceptions = next.exceptions;
-  state.analytics = next.analytics;
-  state.diagnostics = next.diagnostics;
+await ensureMt5ModuleHydrated("ea-monitoring");
+
+export function resetEaMonitoringState(override?: Partial<EaMonitoringState>) {
+  state.instances = override?.instances ?? [];
+  state.commands = override?.commands ?? [];
+  state.bindings = override?.bindings ?? [];
+  state.logs = override?.logs ?? [];
+  state.exceptions = override?.exceptions ?? [];
+  state.analytics = override?.analytics ?? [];
+  state.diagnostics = override?.diagnostics ?? [];
   state.audit = [];
   state.lastSyncAt = new Date().toISOString();
 }

@@ -1,27 +1,53 @@
 import type { AuditRecord, Mt5Role } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/types/mt5-control-center.types";
 import { calculateAccountSyncHealth, calculateExposureRisk, classifyReconciliation, recoveryWorkflow, validateTradingReadiness } from "@/modules/mt5-infrastructure-and-broker-connectivity/account-sync/algorithms/account-sync.algorithms";
-import { createAccountSyncSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/account-sync/data/account-sync.mock";
+import type {
+  AccountDiagnostic,
+  AccountExposure,
+  AccountPendingOrder,
+  AccountPosition,
+  AccountReconciliation,
+  AccountSyncResponse,
+  AccountSyncLog,
+  SyncedAccount
+} from "@/modules/mt5-infrastructure-and-broker-connectivity/account-sync/types/account-sync.types";
 import type { TerminalPendingOrderUpdatePayload, TerminalPositionUpdatePayload } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-bridge/types/ea-bridge.types";
 import { resolveMt5Role } from "../../_lib/access";
-import { bindPersistedMt5State } from "../../_lib/persistence";
+import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
 
-const seed = createAccountSyncSeed();
-const state = bindPersistedMt5State("account-sync", () => ({
-  ...seed,
+type AccountSyncState = {
+  accounts: SyncedAccount[];
+  positions: AccountPosition[];
+  orders: AccountPendingOrder[];
+  reconciliations: AccountReconciliation[];
+  logs: AccountSyncLog[];
+  exposures: AccountExposure[];
+  diagnostics: AccountDiagnostic[];
+  audits: AuditRecord[];
+  lastSyncAt: string;
+};
+
+const state = bindPersistedMt5State<AccountSyncState>("account-sync", () => ({
+  accounts: [],
+  positions: [],
+  orders: [],
+  reconciliations: [],
+  logs: [],
+  exposures: [],
+  diagnostics: [],
   audits: [] as AuditRecord[],
   lastSyncAt: new Date().toISOString()
 }));
-type AccountSyncSeed = ReturnType<typeof createAccountSyncSeed>;
 
-export function resetAccountSyncState(override?: AccountSyncSeed) {
-  const next = override ?? createAccountSyncSeed();
-  state.accounts = next.accounts;
-  state.positions = next.positions;
-  state.orders = next.orders;
-  state.reconciliations = next.reconciliations;
-  state.logs = next.logs;
-  state.exposures = next.exposures;
-  state.diagnostics = next.diagnostics;
+await ensureMt5ModuleHydrated("account-sync");
+
+export function resetAccountSyncState(override?: Partial<AccountSyncState>) {
+  state.accounts = override?.accounts ?? [];
+  state.positions = override?.positions ?? [];
+  state.orders = override?.orders ?? [];
+  state.reconciliations = override?.reconciliations ?? [];
+  state.logs = override?.logs ?? [];
+  state.exposures = override?.exposures ?? [];
+  state.diagnostics = override?.diagnostics ?? [];
   state.audits = [];
   state.lastSyncAt = new Date().toISOString();
 }

@@ -7,7 +7,7 @@ import {
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/data/broker-catalog";
 
 describe("MT5 broker catalog", () => {
-  it("lists live and demo profiles with MT5 terminal server names", () => {
+  it("lists broker profiles with MT5 terminal server names", () => {
     expect(MT5_BROKER_CATALOG.some((entry) => entry.mt5ServerName === "ICMarketsSC-MT5")).toBe(true);
     expect(MT5_BROKER_CATALOG.some((entry) => entry.mt5ServerName === "Pepperstone-MT5-Live01")).toBe(true);
     expect(MT5_BROKER_CATALOG.some((entry) => entry.mt5ServerName === "Eightcap-Real")).toBe(true);

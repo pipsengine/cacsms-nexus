@@ -1,6 +1,5 @@
 import type { AuditRecord, Mt5Role, ScoreResult } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/types/mt5-control-center.types";
 import { latencyRiskScore, riskLevelFromScore } from "@/modules/mt5-infrastructure-and-broker-connectivity/latency-monitor/algorithms/latency-monitor.algorithms";
-import { createLatencyMonitorSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/latency-monitor/data/latency-monitor.mock";
 import type {
   ActionResponse,
   AiDiagnosticsResponse,
@@ -25,29 +24,34 @@ import type {
   WorkflowResponse
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/latency-monitor/types/latency-monitor.types";
 import { resolveMt5Role } from "../../_lib/access";
-import { bindPersistedMt5State } from "../../_lib/persistence";
-
-function seed() {
-  const s = createLatencyMonitorSeed();
-  return { ...s, audits: [] as AuditRecord[], tests: [] as LatencyTestResult[] };
-}
+import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
 
 const state = bindPersistedMt5State("latency-monitor", () => ({
-  ...seed(),
+  thresholds: [] as LatencyThreshold[],
+  metrics: [] as LatencyMetric[],
+  alerts: [] as LatencyAlert[],
+  trends: [] as any[],
+  brokerComparison: [] as LatencyBrokerComparisonRow[],
+  workflow: [] as any[],
+  logs: [] as LatencyLogEntry[],
+  aiDiagnostics: [] as AiLatencyDiagnostic[],
+  audits: [] as AuditRecord[],
+  tests: [] as LatencyTestResult[],
   blockedMetricIds: new Set<string>(),
   testCounter: 1
 }));
 
-export function resetLatencyMonitorState(override?: ReturnType<typeof createLatencyMonitorSeed>) {
-  const next = override ? { ...override, audits: [] as AuditRecord[], tests: [] as LatencyTestResult[] } : seed();
-  state.thresholds = next.thresholds;
-  state.metrics = next.metrics;
-  state.alerts = next.alerts;
-  state.trends = next.trends;
-  state.brokerComparison = next.brokerComparison;
-  state.workflow = next.workflow;
-  state.logs = next.logs;
-  state.aiDiagnostics = next.aiDiagnostics;
+await ensureMt5ModuleHydrated("latency-monitor");
+
+export function resetLatencyMonitorState(override?: Partial<typeof state>) {
+  state.thresholds = override?.thresholds ?? [];
+  state.metrics = override?.metrics ?? [];
+  state.alerts = override?.alerts ?? [];
+  state.trends = (override as any)?.trends ?? [];
+  state.brokerComparison = override?.brokerComparison ?? [];
+  state.workflow = (override as any)?.workflow ?? [];
+  state.logs = override?.logs ?? [];
+  state.aiDiagnostics = override?.aiDiagnostics ?? [];
   state.audits = [];
   state.tests = [];
   state.blockedMetricIds = new Set<string>();

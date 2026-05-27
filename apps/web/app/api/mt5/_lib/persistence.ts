@@ -349,7 +349,7 @@ export async function ensureMt5ModuleHydrated(moduleKey: Mt5ModuleKey) {
   }
 }
 
-export async function ensureMt5ModulesHydrated(moduleKeys: Mt5ModuleKey[]) {
+export async function ensureMt5ModulesHydrated(moduleKeys: readonly Mt5ModuleKey[]) {
   const uniqueKeys = [...new Set(moduleKeys)];
   await Promise.all(uniqueKeys.map((moduleKey) => ensureMt5ModuleHydrated(moduleKey)));
 }
@@ -415,4 +415,20 @@ export async function resetMt5ModuleState(moduleKey: Mt5ModuleKey, createSeed: (
     await writeModuleState(moduleKey, entry.state);
     entry.hydrated = true;
   }
+}
+
+export async function purgeMt5ModuleStatesFromDatabase(moduleKeys: readonly Mt5ModuleKey[] = MT5_MODULE_KEYS) {
+  if (!shouldUseDatabase()) {
+    return { cleared: 0 };
+  }
+  const uniqueKeys = [...new Set(moduleKeys)];
+  if (!uniqueKeys.length) {
+    return { cleared: 0 };
+  }
+  await ensureSchema();
+  const result = await runQuery(
+    `delete from mt5_module_states where module_key = any($1::text[])`,
+    [uniqueKeys]
+  );
+  return { cleared: result.rowCount ?? 0 };
 }

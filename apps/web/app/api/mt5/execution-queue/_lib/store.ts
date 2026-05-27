@@ -8,7 +8,6 @@ import {
   prioritizeQueue,
   safeRetryDecision
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/execution-queue/algorithms/execution-queue.algorithms";
-import { createExecutionQueueSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/execution-queue/data/execution-queue.mock";
 import type {
   ActionResponse,
   BottlenecksResponse,
@@ -28,27 +27,27 @@ import type {
   QueueLog
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/execution-queue/types/execution-queue.types";
 import { resolveMt5Role } from "../../_lib/access";
-import { bindPersistedMt5State } from "../../_lib/persistence";
+import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
 
-const seed = createExecutionQueueSeed();
 const state = bindPersistedMt5State("execution-queue", () => ({
   queuePaused: false,
   emergencyStopActive: false,
-  items: seed.items,
-  feedback: seed.feedback,
-  logs: seed.logs,
-  bottlenecks: seed.bottlenecks,
+  items: [] as ExecutionQueueItem[],
+  feedback: [] as ExecutionFeedback[],
+  logs: [] as QueueLog[],
+  bottlenecks: [] as QueueBottleneck[],
   audits: [] as AuditRecord[]
 }));
 
-export function resetExecutionQueueState(override?: ReturnType<typeof createExecutionQueueSeed>) {
-  const next = override ?? createExecutionQueueSeed();
+await ensureMt5ModuleHydrated("execution-queue");
+
+export function resetExecutionQueueState(override?: { items?: ExecutionQueueItem[]; feedback?: ExecutionFeedback[]; logs?: QueueLog[]; bottlenecks?: QueueBottleneck[] }) {
   state.queuePaused = false;
   state.emergencyStopActive = false;
-  state.items = next.items;
-  state.feedback = next.feedback;
-  state.logs = next.logs;
-  state.bottlenecks = next.bottlenecks;
+  state.items = override?.items ?? [];
+  state.feedback = override?.feedback ?? [];
+  state.logs = override?.logs ?? [];
+  state.bottlenecks = override?.bottlenecks ?? [];
   state.audits = [];
 }
 

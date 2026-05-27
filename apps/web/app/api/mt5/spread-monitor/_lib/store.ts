@@ -7,7 +7,6 @@ import {
   spreadStatusFromThreshold,
   shouldBlockExecution
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/spread-monitor/algorithms/spread-monitor.algorithms";
-import { createSpreadMonitorSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/spread-monitor/data/spread-monitor.mock";
 import type {
   ActionResponse,
   AiSpreadDiagnostic,
@@ -28,26 +27,28 @@ import type {
   TrendsResponse
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/spread-monitor/types/spread-monitor.types";
 import { resolveMt5Role } from "../../_lib/access";
-import { bindPersistedMt5State } from "../../_lib/persistence";
-
-const seed = () => {
-  const s = createSpreadMonitorSeed();
-  return { ...s, audits: [] as AuditRecord[] };
-};
+import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
 
 const state = bindPersistedMt5State("spread-monitor", () => ({
-  ...seed(),
+  thresholds: [] as SpreadThreshold[],
+  spreads: [] as SpreadSnapshot[],
+  trends: [] as any[],
+  alerts: [] as SpreadAlert[],
+  logs: [] as SpreadLogEntry[],
+  workflow: [] as any[],
+  audits: [] as AuditRecord[],
   disabledSymbols: new Set<string>()
 }));
 
-export function resetSpreadMonitorState(override?: ReturnType<typeof createSpreadMonitorSeed>) {
-  const next = override ? { ...override, audits: [] as AuditRecord[] } : seed();
-  state.thresholds = next.thresholds;
-  state.spreads = next.spreads;
-  state.trends = next.trends;
-  state.alerts = next.alerts;
-  state.logs = next.logs;
-  state.workflow = next.workflow;
+await ensureMt5ModuleHydrated("spread-monitor");
+
+export function resetSpreadMonitorState(override?: Partial<typeof state>) {
+  state.thresholds = override?.thresholds ?? [];
+  state.spreads = override?.spreads ?? [];
+  state.trends = (override as any)?.trends ?? [];
+  state.alerts = override?.alerts ?? [];
+  state.logs = override?.logs ?? [];
+  state.workflow = (override as any)?.workflow ?? [];
   state.audits = [];
   state.disabledSymbols = new Set<string>();
 }

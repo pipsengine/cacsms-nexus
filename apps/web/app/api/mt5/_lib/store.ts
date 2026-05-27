@@ -1,5 +1,4 @@
 import { formatNigeriaTime } from "@/lib/nigeria-time";
-import { createMt5Seed } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/data/mt5-control-center.mock";
 import {
   analyzeSymbolMappings,
   calculateConnectionHealthScore,
@@ -19,18 +18,31 @@ import type {
   Terminal
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/types/mt5-control-center.types";
 import { resolveMt5Role } from "./access";
-import { bindPersistedMt5State } from "./persistence";
+import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "./persistence";
 
 const state = bindPersistedMt5State("mt5-control-center", () => ({
-  ...createMt5Seed(),
+  terminals: [] as Terminal[],
+  brokers: [] as Broker[],
+  accounts: [] as Account[],
+  symbols: [] as SymbolMapping[],
+  executionSamples: [] as any[],
+  diagnostics: [] as any[],
+  incidents: [] as any[],
+  workflow: [] as any[],
   audit: [] as AuditRecord[]
 }));
 
-export function resetMt5ControlCenterState(override?: ReturnType<typeof createMt5Seed>) {
-  const next = override ?? createMt5Seed();
-  for (const key of Object.keys(next) as (keyof typeof next)[]) {
-    (state as Record<string, unknown>)[key as string] = next[key];
-  }
+await ensureMt5ModuleHydrated("mt5-control-center");
+
+export function resetMt5ControlCenterState(override?: Partial<typeof state>) {
+  state.terminals = override?.terminals ?? [];
+  state.brokers = override?.brokers ?? [];
+  state.accounts = override?.accounts ?? [];
+  state.symbols = override?.symbols ?? [];
+  state.executionSamples = (override as any)?.executionSamples ?? [];
+  state.diagnostics = (override as any)?.diagnostics ?? [];
+  state.incidents = (override as any)?.incidents ?? [];
+  state.workflow = (override as any)?.workflow ?? [];
   state.audit = [];
 }
 
@@ -90,7 +102,7 @@ export function getTerminal(id: string) {
   return state.terminals.find((terminal) => terminal.id === id);
 }
 
-export const TERMINAL_ID_PATTERN = /^CACSMS-MT5-\d{4}$/i;
+export const TERMINAL_ID_PATTERN = /^CACSMS-MT5-(\d{4})$/i;
 
 export function formatTerminalId(sequence: number) {
   return `CACSMS-MT5-${String(sequence).padStart(4, "0")}`;
@@ -400,21 +412,36 @@ export function buildControlCenter(role: Mt5Role = "Infrastructure Admin"): Mt5C
   const execution = calculateExecutionQuality(state.executionSamples);
   const gaps = detectMarketDataGaps(state.symbols);
   const brokerCount = state.brokers.length;
-  const averageBrokerUptime = brokerCount ? state.brokers.reduce((sum, broker) => sum + broker.uptimePercent, 0) / brokerCount : 100;
+  const averageBrokerUptime = brokerCount ? state.brokers.reduce((sum, broker) => sum + broker.uptimePercent, 0) / brokerCount : 0;
   const averageBrokerLatency = brokerCount ? state.brokers.reduce((sum, broker) => sum + broker.averageLatencyMs, 0) / brokerCount : 0;
-  const averageDataFeedQuality = brokerCount ? state.brokers.reduce((sum, broker) => sum + broker.dataFeedQualityScore, 0) / brokerCount : 100;
+  const averageDataFeedQuality = brokerCount ? state.brokers.reduce((sum, broker) => sum + broker.dataFeedQualityScore, 0) / brokerCount : 0;
   const loginSuccessPercent = brokerCount
     ? 100 - (state.brokers.filter((broker) => broker.loginHealth === "Critical").length / brokerCount) * 100
-    : 100;
-  const connectionHealth = calculateConnectionHealthScore({
-    uptimePercent: averageBrokerUptime,
-    heartbeatAgeSeconds: heartbeat,
-    latencyMs: averageBrokerLatency,
-    dataFeedQuality: averageDataFeedQuality,
-    loginSuccessPercent,
-    executionSuccessPercent: 100 - execution.rejectionRate,
-    criticalIncidents: critical
-  });
+    : 0;
+  const hasSignal = Boolean(
+    state.terminals.length ||
+    state.brokers.length ||
+    state.accounts.length ||
+    state.symbols.length ||
+    state.executionSamples.length ||
+    state.diagnostics.length ||
+    state.incidents.length
+  );
+  const connectionHealth = hasSignal
+    ? calculateConnectionHealthScore({
+        uptimePercent: averageBrokerUptime,
+        heartbeatAgeSeconds: heartbeat,
+        latencyMs: averageBrokerLatency,
+        dataFeedQuality: averageDataFeedQuality,
+        loginSuccessPercent,
+        executionSuccessPercent: 100 - execution.rejectionRate,
+        criticalIncidents: critical
+      })
+    : {
+        score: 0,
+        rating: "Critical" as const,
+        factors: { uptime: 0, heartbeat: 0, latency: 0, dataFeed: 0, loginSuccess: 0, executionSuccess: 0, incidentPenalty: 0 }
+      };
   const brokerMetrics = state.brokers.map((broker) => {
     const samples = state.executionSamples.filter((sample) => sample.brokerId === broker.id);
     const metric = calculateExecutionQuality(samples);

@@ -10,10 +10,11 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as SignedBridgeEnvelope;
-    if (body.messageType === "Trade Execution Result" || body.messageType === "Command Poll") {
+    const messageType = body.messageType;
+    if (messageType === "Trade Execution Result" || messageType === "Command Poll") {
       throw new Error("Use the command-channel endpoint for this bridge message type.");
     }
-    const result = await withEaBridgeStore(() => ingestSignedBridgeEvent(body, body.messageType, request));
+    const result = await withEaBridgeStore(() => ingestSignedBridgeEvent(body, messageType, request));
     return ok(result, 202);
   } catch (error) {
     return failure(error);

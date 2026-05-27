@@ -11,7 +11,7 @@ export function useTradeSynchronization() {
 
   const summary = useQuery({
     queryKey: ["trade-sync", "summary"],
-    queryFn: () => fetchTradeSyncSummary({ allowMockFallback: true }),
+    queryFn: () => fetchTradeSyncSummary(),
     refetchInterval: 10_000,
     staleTime: 5_000,
     retry: 2
@@ -27,4 +27,3 @@ export function useTradeSynchronization() {
 
   return { summary, trades };
 }
-

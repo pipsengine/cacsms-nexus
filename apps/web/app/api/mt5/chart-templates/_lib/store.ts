@@ -1,20 +1,20 @@
 import type { AuditRecord, Mt5Role } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/types/mt5-control-center.types";
 import { calculateTemplateHealth, detectTemplateIssues, nextVersion, templateCompleteness } from "@/modules/mt5-infrastructure-and-broker-connectivity/chart-templates/algorithms/chart-templates.algorithms";
-import { createChartTemplatesSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/chart-templates/data/chart-templates.mock";
 import type { ChartTemplate, TemplateResponse } from "@/modules/mt5-infrastructure-and-broker-connectivity/chart-templates/types/chart-templates.types";
 import { resolveMt5Role } from "../../_lib/access";
-import { bindPersistedMt5State } from "../../_lib/persistence";
+import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
 
 const state = bindPersistedMt5State("chart-templates", () => ({
-  ...createChartTemplatesSeed(),
+  templates: [] as ChartTemplate[],
+  deployments: [] as any[],
   audits: [] as AuditRecord[]
 }));
 
-export function resetChartTemplatesState(override?: ReturnType<typeof createChartTemplatesSeed>) {
-  const next = override ?? createChartTemplatesSeed();
-  for (const key of Object.keys(next) as (keyof typeof next)[]) {
-    (state as Record<string, unknown>)[key as string] = next[key];
-  }
+await ensureMt5ModuleHydrated("chart-templates");
+
+export function resetChartTemplatesState(override?: Partial<typeof state>) {
+  state.templates = override?.templates ?? [];
+  state.deployments = (override as any)?.deployments ?? [];
   state.audits = [];
 }
 

@@ -10,7 +10,6 @@ import {
   proposeDiagnostic,
   riskLevelFromSeverity
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-error-logs/algorithms/mt5-error-logs.algorithms";
-import { createMt5ErrorLogsSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-error-logs/data/mt5-error-logs.mock";
 import type {
   ActionResponse,
   AiDiagnosticsResponse,
@@ -38,9 +37,7 @@ import type {
   Mt5ErrorLogsSummaryResponse
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-error-logs/types/mt5-error-logs.types";
 import { resolveMt5Role } from "../../_lib/access";
-import { bindPersistedMt5State } from "../../_lib/persistence";
-
-const seed = createMt5ErrorLogsSeed();
+import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
 
 type ErrorLogsState = {
   errors: Mt5ErrorLog[];
@@ -52,20 +49,21 @@ type ErrorLogsState = {
 };
 
 const state = bindPersistedMt5State<ErrorLogsState>("error-logs", () => ({
-  errors: seed.errors,
-  diagnostics: seed.diagnostics,
-  incidents: seed.incidents,
-  resolutions: seed.resolutions,
+  errors: [],
+  diagnostics: [],
+  incidents: [],
+  resolutions: [],
   audits: [],
   lastSyncAt: new Date().toISOString()
 }));
 
-export function resetErrorLogsState(override?: ReturnType<typeof createMt5ErrorLogsSeed>) {
-  const next = override ?? createMt5ErrorLogsSeed();
-  state.errors = next.errors;
-  state.diagnostics = next.diagnostics;
-  state.incidents = next.incidents;
-  state.resolutions = next.resolutions;
+await ensureMt5ModuleHydrated("error-logs");
+
+export function resetErrorLogsState(override?: Partial<ErrorLogsState>) {
+  state.errors = override?.errors ?? [];
+  state.diagnostics = override?.diagnostics ?? [];
+  state.incidents = override?.incidents ?? [];
+  state.resolutions = override?.resolutions ?? [];
   state.audits = [];
   state.lastSyncAt = new Date().toISOString();
 }

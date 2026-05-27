@@ -12,7 +12,6 @@ import {
   isDuplicateCommand,
   validateBridgePayload
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-bridge/algorithms/ea-bridge.algorithms";
-import { createEaBridgeSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-bridge/data/ea-bridge.mock";
 import type {
   BridgeDiagnostic,
   BridgeLog,
@@ -32,7 +31,7 @@ import type {
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-bridge/types/ea-bridge.types";
 import { resolveMt5Role } from "../../_lib/access";
 import { getTerminals } from "../../_lib/store";
-import { bindPersistedMt5State } from "../../_lib/persistence";
+import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
 import { ingestEndpointName, readIngestBindingHints } from "./ingest-request";
 import {
   EaIngestionAuthError,
@@ -49,19 +48,77 @@ import {
   type EaIngestionTokenFingerprint
 } from "./ingestion-auth";
 
-const seed = createEaBridgeSeed();
+type EaIssuedCredentialSecrets = Record<
+  string,
+  {
+    ingestionTokenHash: string;
+    signingSecret: string;
+    ingestionTokenHint?: EaIngestionTokenFingerprint;
+    signingSecretHint?: EaIngestionTokenFingerprint;
+  }
+>;
+
+type AccountSyncBridgeIngest = {
+  account: ReturnType<typeof ingestTerminalAccountSnapshot>["account"];
+  reconciliation?: ReturnType<typeof ingestTerminalAccountSnapshot>["reconciliation"];
+  positions?: ReturnType<typeof ingestTerminalPositionUpdates>["positions"];
+  orders?: ReturnType<typeof ingestTerminalPendingOrderUpdates>["orders"];
+};
+
+function normalizeFingerprint(value: unknown): EaIngestionTokenFingerprint | undefined {
+  if (!value) return undefined;
+  if (typeof value === "object") {
+    const candidate = value as Partial<EaIngestionTokenFingerprint>;
+    if (
+      typeof candidate.length === "number" &&
+      typeof candidate.prefix === "string" &&
+      typeof candidate.suffix === "string"
+    ) {
+      return { length: candidate.length, prefix: candidate.prefix, suffix: candidate.suffix };
+    }
+  }
+  if (typeof value === "string") {
+    return tokenSafeFingerprint(value);
+  }
+  return undefined;
+}
+
 const state = bindPersistedMt5State("ea-bridge", () => ({
-  ...seed,
+  instances: [] as EaInstance[],
+  sessions: [] as BridgeSession[],
+  messages: [] as BridgeMessage[],
+  commands: [] as TradeCommand[],
+  logs: [] as BridgeLog[],
+  diagnostics: [] as BridgeDiagnostic[],
   audits: [] as AuditRecord[],
   lastSyncAt: new Date().toISOString(),
-  usedNonces: new Set(seed.messages.map((message) => message.nonce)),
-  issuedCredentialSecrets: { ...seed.issuedCredentialSecrets }
+  usedNonces: new Set<string>(),
+  issuedCredentialSecrets: {} as EaIssuedCredentialSecrets
 }));
+
+await ensureMt5ModuleHydrated("ea-bridge");
 
 function ensureCredentialStore() {
   if (!state.issuedCredentialSecrets || typeof state.issuedCredentialSecrets !== "object") {
     state.issuedCredentialSecrets = {};
+    return;
   }
+
+  const normalized: EaIssuedCredentialSecrets = {};
+  for (const [instanceId, entry] of Object.entries(state.issuedCredentialSecrets as Record<string, unknown>)) {
+    if (!entry || typeof entry !== "object") continue;
+    const record = entry as Record<string, unknown>;
+    const ingestionTokenHash = typeof record.ingestionTokenHash === "string" ? record.ingestionTokenHash : "";
+    const signingSecret = typeof record.signingSecret === "string" ? record.signingSecret : "";
+    if (!ingestionTokenHash || !signingSecret) continue;
+    normalized[instanceId] = {
+      ingestionTokenHash,
+      signingSecret,
+      ingestionTokenHint: normalizeFingerprint(record.ingestionTokenHint),
+      signingSecretHint: normalizeFingerprint(record.signingSecretHint)
+    };
+  }
+  state.issuedCredentialSecrets = normalized;
 }
 
 function isLocalDevOperatorMode() {
@@ -399,15 +456,17 @@ function authorizeIngestFromEnvelope(request: Request, envelope: SignedBridgeEnv
   });
 }
 
-export function resetEaBridgeState(override?: ReturnType<typeof createEaBridgeSeed>) {
-  const next = override ?? createEaBridgeSeed();
-  for (const key of Object.keys(next) as (keyof typeof next)[]) {
-    (state as Record<string, unknown>)[key as string] = next[key];
-  }
+export function resetEaBridgeState(override?: Partial<typeof state>) {
+  state.instances = override?.instances ?? [];
+  state.sessions = override?.sessions ?? [];
+  state.messages = override?.messages ?? [];
+  state.commands = override?.commands ?? [];
+  state.logs = override?.logs ?? [];
+  state.diagnostics = override?.diagnostics ?? [];
   state.audits = [];
   state.lastSyncAt = new Date().toISOString();
-  state.usedNonces = new Set(next.messages.map((message) => message.nonce));
-  state.issuedCredentialSecrets = { ...next.issuedCredentialSecrets };
+  state.usedNonces = new Set((override?.messages ?? []).map((message) => message.nonce));
+  state.issuedCredentialSecrets = override?.issuedCredentialSecrets ?? {};
 }
 
 export function eaBridgeRole(request?: Request): Mt5Role {
@@ -615,7 +674,7 @@ export function ingestSignedBridgeEvent(
   ensureUsedNonces();
   authorizeIngestFromEnvelope(request, envelope, ingestEndpointName(expectedType));
   const instance = verifySignedEnvelope(envelope, expectedType);
-  let accountSync: ReturnType<typeof ingestTerminalAccountSnapshot> | undefined;
+  let accountSync: AccountSyncBridgeIngest | undefined;
   if (expectedType === "Heartbeat") {
     const payload = parsePayload<TerminalHeartbeatPayload>(envelope);
     if (payload.accountLogin !== instance.accountLogin) throw new Error("Schema validation error: heartbeat account is not bound to this EA instance.");
@@ -637,15 +696,18 @@ export function ingestSignedBridgeEvent(
   } else if (expectedType === "Account Snapshot") {
     const payload = parsePayload<TerminalAccountSnapshotPayload>(envelope);
     if (payload.accountLogin !== instance.accountLogin) throw new Error("Schema validation error: snapshot account is not bound to this EA instance.");
-    accountSync = ingestTerminalAccountSnapshot(payload);
+    const result = ingestTerminalAccountSnapshot(payload);
+    accountSync = { account: result.account, reconciliation: result.reconciliation };
   } else if (expectedType === "Position Update") {
     const payload = parsePayload<TerminalPositionUpdatePayload>(envelope);
     if (payload.accountLogin !== instance.accountLogin) throw new Error("Schema validation error: position update account is not bound to this EA instance.");
-    accountSync = ingestTerminalPositionUpdates(payload);
+    const result = ingestTerminalPositionUpdates(payload);
+    accountSync = { account: result.account, positions: result.positions };
   } else if (expectedType === "Pending Order Update") {
     const payload = parsePayload<TerminalPendingOrderUpdatePayload>(envelope);
     if (payload.accountLogin !== instance.accountLogin) throw new Error("Schema validation error: pending order update account is not bound to this EA instance.");
-    accountSync = ingestTerminalPendingOrderUpdates(payload);
+    const result = ingestTerminalPendingOrderUpdates(payload);
+    accountSync = { account: result.account, orders: result.orders };
   } else {
     parsePayload<unknown>(envelope);
   }

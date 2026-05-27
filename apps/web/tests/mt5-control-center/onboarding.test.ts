@@ -103,7 +103,7 @@ describe("terminal onboarding workflow", () => {
     };
     const snapshot: SignedBridgeEnvelope = { ...snapshotUnsigned, signature: signBridgeEnvelope(snapshotUnsigned, receipt.signingSecret) };
     const synchronized = ingestSignedBridgeEvent(snapshot, "Account Snapshot", heartbeat);
-    expect(synchronized.accountSync?.reconciliation.reconciliationStatus).toBe("Matched");
+    expect(synchronized.accountSync?.reconciliation?.reconciliationStatus).toBe("Matched");
     expect(synchronized.accountSync?.account.tradingAllowed).toBe(false);
   });
 

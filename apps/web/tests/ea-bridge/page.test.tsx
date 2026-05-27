@@ -40,6 +40,8 @@ describe("EA Bridge dashboard", () => {
     expect(screen.getByText("Execution Safety Gate")).toBeInTheDocument();
     expect(screen.getByText("Trade Command Channel")).toBeInTheDocument();
     expect(screen.getByText("AI Bridge Diagnostics")).toBeInTheDocument();
+    const registry = within(screen.getByRole("table", { name: "EA instance registry" }));
+    fireEvent.click(registry.getByText("NexusExecutionEA").closest("tr")!);
     expect(screen.getByText("Token Controls")).toBeInTheDocument();
     expect(screen.queryByText(/sha256:comp/)).not.toBeInTheDocument();
     expect(screen.getByText("1 blocked")).toBeInTheDocument();

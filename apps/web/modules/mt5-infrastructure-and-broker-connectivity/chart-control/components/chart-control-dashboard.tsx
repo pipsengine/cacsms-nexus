@@ -9,9 +9,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { indicatorRecommendation, visibleCandles } from "../algorithms/chart-control.algorithms";
-import { timeframes } from "../data/chart-control.mock";
 import { useChartControl } from "../hooks/use-chart-control";
 import type { ChartSeverity, ChartTone, Timeframe } from "../types/chart-control.types";
+import { timeframes } from "../types/chart-control.types";
 
 const variants: Record<ChartTone, "success" | "warning" | "destructive" | "secondary"> = { Healthy: "success", Watch: "warning", Degraded: "warning", Critical: "destructive", Offline: "destructive", Inactive: "secondary" };
 const borders: Record<ChartTone, string> = { Healthy: "border-t-emerald-500", Watch: "border-t-amber-500", Degraded: "border-t-amber-500", Critical: "border-t-red-500", Offline: "border-t-red-500", Inactive: "border-t-slate-400" };

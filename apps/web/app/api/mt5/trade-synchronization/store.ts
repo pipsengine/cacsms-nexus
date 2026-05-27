@@ -1,4 +1,4 @@
-import { bindPersistedMt5State } from "@/app/api/mt5/_lib/persistence";
+import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "@/app/api/mt5/_lib/persistence";
 import type {
   TradeSyncLogEntry,
   TradeSyncTrade
@@ -17,6 +17,8 @@ const state = bindPersistedMt5State<TradeSyncRuntimeState>("trade-synchronizatio
   logs: [],
   updatedAt: new Date().toISOString()
 }));
+
+await ensureMt5ModuleHydrated("trade-synchronization");
 
 export function resetTradeSyncState(override?: { trades?: TradeSyncTrade[]; logs?: TradeSyncLogEntry[] }) {
   state.frozen = false;

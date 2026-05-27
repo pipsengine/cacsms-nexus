@@ -7,15 +7,6 @@ import {
   overallConnectionHealthScore,
   tradingPathSafety
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/connection-health/algorithms/connection-health.algorithms";
-import {
-  createMockComponents,
-  createMockDependencyMap,
-  createMockDiagnostics,
-  createMockIncidents,
-  createMockLatencyAndPacketLoss,
-  createMockLogs,
-  createMockWorkflow
-} from "@/modules/mt5-infrastructure-and-broker-connectivity/connection-health/data/connection-health.mock";
 import type {
   ActionResponse,
   AiConnectionDiagnostic,
@@ -26,40 +17,61 @@ import type {
   ConnectionHealthSummaryResponse,
   ConnectionIncident,
   ConnectionLogEntry,
+  ConnectionWorkflowNode,
   DependencyMapResponse,
   HeartbeatsResponse,
   IncidentsResponse,
   LatencyResponse,
+  LatencyPoint,
   PacketLossResponse,
+  PacketLossPoint,
   LogsResponse,
   WorkflowResponse
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/connection-health/types/connection-health.types";
 import { resolveMt5Role } from "../../_lib/access";
-import { bindPersistedMt5State } from "../../_lib/persistence";
-
-const seed = () => {
-  const components = createMockComponents();
-  const map = createMockDependencyMap(components);
-  const { latency, packetLoss } = createMockLatencyAndPacketLoss();
-  return { components, dependencyMap: map, latency, packetLoss, workflow: createMockWorkflow(components), incidents: createMockIncidents(), logs: createMockLogs() };
-};
+import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
 
 const state = bindPersistedMt5State("connection-health", () => ({
   disabledUnsafeTrading: false,
-  ...seed(),
+  components: [] as ConnectionComponent[],
+  dependencyMap: {
+    meta: { timestamp: new Date().toISOString() },
+    nodes: [],
+    edges: [],
+    firstFailedComponentId: null,
+    downstreamImpactedComponentIds: [],
+    tradingImpact: "No components registered.",
+    recommendedRecoverySequence: []
+  } as DependencyMapResponse,
+  latency: [] as LatencyPoint[],
+  packetLoss: [] as PacketLossPoint[],
+  workflow: [] as ConnectionWorkflowNode[],
+  incidents: [] as ConnectionIncident[],
+  logs: [] as ConnectionLogEntry[],
   audits: [] as AuditRecord[]
 }));
 
-export function resetConnectionHealthState(override?: ReturnType<typeof seed>) {
-  const next = override ?? seed();
+await ensureMt5ModuleHydrated("connection-health");
+
+export function resetConnectionHealthState(override?: Partial<typeof state>) {
   state.disabledUnsafeTrading = false;
-  state.components = next.components;
-  state.dependencyMap = next.dependencyMap;
-  state.latency = next.latency;
-  state.packetLoss = next.packetLoss;
-  state.workflow = next.workflow;
-  state.incidents = next.incidents;
-  state.logs = next.logs;
+  state.components = override?.components ?? [];
+  state.dependencyMap =
+    override?.dependencyMap ??
+    ({
+      meta: { timestamp: new Date().toISOString() },
+      nodes: [],
+      edges: [],
+      firstFailedComponentId: null,
+      downstreamImpactedComponentIds: [],
+      tradingImpact: "No components registered.",
+      recommendedRecoverySequence: []
+    } as DependencyMapResponse);
+  state.latency = override?.latency ?? [];
+  state.packetLoss = override?.packetLoss ?? [];
+  state.workflow = override?.workflow ?? [];
+  state.incidents = override?.incidents ?? [];
+  state.logs = override?.logs ?? [];
   state.audits = [];
 }
 
@@ -123,9 +135,19 @@ function updateComponent(componentId: string, patch: Partial<ConnectionComponent
 }
 
 function recomputeWorkflowAndMap() {
-  state.workflow = createMockWorkflow(state.components);
+  state.workflow = [];
   if (state.components.length === 0) {
-    state.dependencyMap = createMockDependencyMap(state.components);
+    state.dependencyMap = {
+      meta: { timestamp: new Date().toISOString() },
+      nodes: [],
+      edges: [],
+      firstFailedComponentId: null,
+      downstreamImpactedComponentIds: [],
+      tradingImpact: "No components registered.",
+      recommendedRecoverySequence: []
+    };
+  } else {
+    state.dependencyMap = { ...state.dependencyMap, meta: { timestamp: new Date().toISOString() } };
   }
 }
 
@@ -251,7 +273,7 @@ export function logs(filter?: string): LogsResponse {
 }
 
 export function aiDiagnostics(): AiDiagnosticsResponse {
-  const base = createMockDiagnostics().diagnostics;
+  const base: AiConnectionDiagnostic[] = [];
   const derived = state.components
     .filter((c) => c.connectionStatus === "Offline" || c.connectionStatus === "Critical" || c.heartbeatStatus === "Offline" || c.packetLossPercent >= 3)
     .slice(0, 10)

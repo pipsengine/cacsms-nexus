@@ -1,11 +1,16 @@
 import type { AuditRecord, Mt5Role, ScoreResult } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/types/mt5-control-center.types";
-import { createExecutionLogsSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/execution-logs/data/execution-logs.mock";
 import type {
   ActionResponse,
   AiDiagnosticsResponse,
   AuditResponse,
+  BrokerResponseRecord,
   BrokerResponseResponse,
+  ExecutionException,
+  ExecutionLifecycleNode,
+  ExecutionQualityMetric,
+  RetryCancellationRecord,
   ExceptionsResponse,
+  AiExecutionDiagnostic,
   ExecutionLog,
   ExecutionLogResponse,
   ExecutionLogsResponse,
@@ -29,43 +34,42 @@ import {
   unsafeRetryDecision
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/execution-logs/algorithms/execution-logs.algorithms";
 import { resolveMt5Role } from "../../_lib/access";
-import { bindPersistedMt5State } from "../../_lib/persistence";
-
-const seed = createExecutionLogsSeed();
+import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
 
 type ExecutionLogsState = {
   logs: ExecutionLog[];
-  brokerResponses: ReturnType<typeof createExecutionLogsSeed>["brokerResponses"];
-  retries: ReturnType<typeof createExecutionLogsSeed>["retries"];
-  qualityMetrics: ReturnType<typeof createExecutionLogsSeed>["qualityMetrics"];
-  exceptions: ReturnType<typeof createExecutionLogsSeed>["exceptions"];
-  diagnostics: ReturnType<typeof createExecutionLogsSeed>["diagnostics"];
-  workflow: ReturnType<typeof createExecutionLogsSeed>["workflow"];
+  brokerResponses: BrokerResponseRecord[];
+  retries: RetryCancellationRecord[];
+  qualityMetrics: ExecutionQualityMetric[];
+  exceptions: ExecutionException[];
+  diagnostics: AiExecutionDiagnostic[];
+  workflow: ExecutionLifecycleNode[];
   audit: AuditRecord[];
   lastSyncAt: string;
 };
 
 const state = bindPersistedMt5State<ExecutionLogsState>("execution-logs", () => ({
-  logs: seed.logs,
-  brokerResponses: seed.brokerResponses,
-  retries: seed.retries,
-  qualityMetrics: seed.qualityMetrics,
-  exceptions: seed.exceptions,
-  diagnostics: seed.diagnostics,
-  workflow: seed.workflow,
+  logs: [],
+  brokerResponses: [],
+  retries: [],
+  qualityMetrics: [],
+  exceptions: [],
+  diagnostics: [],
+  workflow: [],
   audit: [],
   lastSyncAt: new Date().toISOString()
 }));
 
-export function resetExecutionLogsState(override?: ReturnType<typeof createExecutionLogsSeed>) {
-  const next = override ?? createExecutionLogsSeed();
-  state.logs = next.logs;
-  state.brokerResponses = next.brokerResponses;
-  state.retries = next.retries;
-  state.qualityMetrics = next.qualityMetrics;
-  state.exceptions = next.exceptions;
-  state.diagnostics = next.diagnostics;
-  state.workflow = next.workflow;
+await ensureMt5ModuleHydrated("execution-logs");
+
+export function resetExecutionLogsState(override?: Partial<ExecutionLogsState>) {
+  state.logs = override?.logs ?? [];
+  state.brokerResponses = override?.brokerResponses ?? [];
+  state.retries = override?.retries ?? [];
+  state.qualityMetrics = override?.qualityMetrics ?? [];
+  state.exceptions = override?.exceptions ?? [];
+  state.diagnostics = override?.diagnostics ?? [];
+  state.workflow = override?.workflow ?? [];
   state.audit = [];
   state.lastSyncAt = new Date().toISOString();
 }

@@ -6,7 +6,6 @@ import {
   rankBrokerReliability,
   recommendBrokerRecovery
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/broker-connections/algorithms/broker-connections.algorithms";
-import { createBrokerConnectionsSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/broker-connections/data/broker-connections.mock";
 import type {
   BrokerConnection,
   BrokerConnectionTest,
@@ -16,21 +15,31 @@ import type {
   BrokerSeverity
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/broker-connections/types/broker-connections.types";
 import { resolveMt5Role } from "../../_lib/access";
-import { bindPersistedMt5State } from "../../_lib/persistence";
+import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
 
-const seed = createBrokerConnectionsSeed();
 const state = bindPersistedMt5State("broker-connections", () => ({
-  ...seed,
+  brokers: [] as BrokerConnection[],
+  incidents: [] as BrokerIncident[],
+  tests: [] as BrokerConnectionTest[],
+  latencyLogs: [] as any[],
+  spreadLogs: [] as any[],
+  executionQuality: [] as any[],
+  diagnostics: [] as BrokerDiagnostic[],
   audits: [] as AuditRecord[],
   lastSyncAt: new Date().toISOString(),
   restorationApprovals: new Set<string>()
 }));
 
-export function resetBrokerConnectionsState(override?: ReturnType<typeof createBrokerConnectionsSeed>) {
-  const next = override ?? createBrokerConnectionsSeed();
-  for (const key of Object.keys(next) as (keyof typeof next)[]) {
-    (state as Record<string, unknown>)[key as string] = next[key];
-  }
+await ensureMt5ModuleHydrated("broker-connections");
+
+export function resetBrokerConnectionsState(override?: Partial<typeof state>) {
+  state.brokers = override?.brokers ?? [];
+  state.incidents = override?.incidents ?? [];
+  state.tests = override?.tests ?? [];
+  state.latencyLogs = (override as any)?.latencyLogs ?? [];
+  state.spreadLogs = (override as any)?.spreadLogs ?? [];
+  state.executionQuality = (override as any)?.executionQuality ?? [];
+  state.diagnostics = override?.diagnostics ?? [];
   state.audits = [];
   state.lastSyncAt = new Date().toISOString();
   state.restorationApprovals = new Set<string>();

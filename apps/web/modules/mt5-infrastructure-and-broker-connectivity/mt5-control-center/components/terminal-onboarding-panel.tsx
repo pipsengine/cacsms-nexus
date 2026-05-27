@@ -59,7 +59,13 @@ export function TerminalOnboardingPanel({ data, action, onNotice, onReceipt, rec
   const [catalog, setCatalog] = useState<BrokerCatalogEntry[]>(MT5_BROKER_CATALOG);
   const [catalogId, setCatalogId] = useState(MT5_BROKER_CATALOG[0]?.catalogId ?? "");
   const [customBroker, setCustomBroker] = useState(false);
-  const [brokerDraft, setBrokerDraft] = useState({
+  const [brokerDraft, setBrokerDraft] = useState<{
+    brokerName: string;
+    brokerCode: string;
+    mt5ServerName: string;
+    serverRegion: string;
+    connectionMode: (typeof ONBOARDING_FORM_OPTIONS.connectionModes)[number];
+  }>({
     brokerName: MT5_BROKER_CATALOG[0]?.brokerName ?? "",
     brokerCode: MT5_BROKER_CATALOG[0]?.brokerCode ?? "",
     mt5ServerName: MT5_BROKER_CATALOG[0]?.mt5ServerName ?? "",
@@ -314,7 +320,12 @@ export function TerminalOnboardingPanel({ data, action, onNotice, onReceipt, rec
               disabled={!canRegisterBroker || !customBroker}
               className={selectClass}
               value={brokerDraft.connectionMode}
-              onChange={(event) => setBrokerDraft((draft) => ({ ...draft, connectionMode: event.target.value }))}
+              onChange={(event) =>
+                setBrokerDraft((draft) => ({
+                  ...draft,
+                  connectionMode: event.target.value as (typeof ONBOARDING_FORM_OPTIONS.connectionModes)[number]
+                }))
+              }
             >
               {ONBOARDING_FORM_OPTIONS.connectionModes.map((mode) => (
                 <option key={mode} value={mode}>{mode}</option>

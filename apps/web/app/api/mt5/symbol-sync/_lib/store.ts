@@ -1,22 +1,21 @@
 import type { AuditRecord, Mt5Role } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/types/mt5-control-center.types";
 import { calculateSymbolHealth, classifyFeed, detectSymbolIssues, normalizeBrokerSymbol, remediationWorkflow } from "@/modules/mt5-infrastructure-and-broker-connectivity/symbol-sync/algorithms/symbol-sync.algorithms";
-import { createSymbolSyncSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/symbol-sync/data/symbol-sync.mock";
 import type { SyncedSymbol, SymbolSyncResponse } from "@/modules/mt5-infrastructure-and-broker-connectivity/symbol-sync/types/symbol-sync.types";
 import { resolveMt5Role } from "../../_lib/access";
-import { bindPersistedMt5State } from "../../_lib/persistence";
+import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
 
-const seed = createSymbolSyncSeed();
 const state = bindPersistedMt5State("symbol-sync", () => ({
-  ...seed,
+  symbols: [] as SyncedSymbol[],
+  diagnostics: [] as any[],
   audits: [] as AuditRecord[],
   lastSyncAt: new Date().toISOString()
 }));
 
-export function resetSymbolSyncState(override?: ReturnType<typeof createSymbolSyncSeed>) {
-  const next = override ?? createSymbolSyncSeed();
-  for (const key of Object.keys(next) as (keyof typeof next)[]) {
-    (state as Record<string, unknown>)[key as string] = next[key];
-  }
+await ensureMt5ModuleHydrated("symbol-sync");
+
+export function resetSymbolSyncState(override?: Partial<typeof state>) {
+  state.symbols = override?.symbols ?? [];
+  state.diagnostics = (override as any)?.diagnostics ?? [];
   state.audits = [];
   state.lastSyncAt = new Date().toISOString();
 }

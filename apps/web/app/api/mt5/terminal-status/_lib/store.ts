@@ -9,7 +9,6 @@ import {
   evaluateSafeRestart,
   predictTerminalFailure
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/terminal-status/algorithms/terminal-status.algorithms";
-import { createTerminalStatusSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/terminal-status/data/terminal-status.mock";
 import type {
   TerminalAiDiagnostic,
   TerminalErrorLog,
@@ -19,19 +18,26 @@ import type {
   TerminalTone
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/terminal-status/types/terminal-status.types";
 import { resolveMt5Role } from "../../_lib/access";
-import { bindPersistedMt5State } from "../../_lib/persistence";
+import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
 
 const state = bindPersistedMt5State("terminal-status", () => ({
-  ...createTerminalStatusSeed(),
+  terminals: [] as TerminalStatusRecord[],
+  heartbeatLogs: [] as any[],
+  events: [] as TerminalEvent[],
+  errors: [] as TerminalErrorLog[],
+  diagnostics: [] as TerminalAiDiagnostic[],
   audits: [] as AuditRecord[],
   lastSyncAt: new Date().toISOString()
 }));
 
-export function resetTerminalStatusState(override?: ReturnType<typeof createTerminalStatusSeed>) {
-  const next = override ?? createTerminalStatusSeed();
-  for (const key of Object.keys(next) as (keyof typeof next)[]) {
-    (state as Record<string, unknown>)[key as string] = next[key];
-  }
+await ensureMt5ModuleHydrated("terminal-status");
+
+export function resetTerminalStatusState(override?: Partial<typeof state>) {
+  state.terminals = override?.terminals ?? [];
+  state.heartbeatLogs = (override as any)?.heartbeatLogs ?? [];
+  state.events = override?.events ?? [];
+  state.errors = override?.errors ?? [];
+  state.diagnostics = override?.diagnostics ?? [];
   state.audits = [];
   state.lastSyncAt = new Date().toISOString();
 }

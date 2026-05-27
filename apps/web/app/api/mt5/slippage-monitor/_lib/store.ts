@@ -7,7 +7,6 @@ import {
   slippageRiskScore,
   shouldBlockExecution
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/slippage-monitor/algorithms/slippage-monitor.algorithms";
-import { createSlippageMonitorSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/slippage-monitor/data/slippage-monitor.mock";
 import type {
   ActionResponse,
   AiDiagnosticsResponse,
@@ -30,28 +29,32 @@ import type {
   WorkflowResponse
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/slippage-monitor/types/slippage-monitor.types";
 import { resolveMt5Role } from "../../_lib/access";
-import { bindPersistedMt5State } from "../../_lib/persistence";
-
-const seed = () => {
-  const s = createSlippageMonitorSeed();
-  return { ...s, audits: [] as AuditRecord[] };
-};
+import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
 
 const state = bindPersistedMt5State("slippage-monitor", () => ({
-  ...seed(),
+  thresholds: [] as SlippageThreshold[],
+  executions: [] as SlippageExecution[],
+  trends: [] as any[],
+  alerts: [] as SlippageAlert[],
+  logs: [] as SlippageLogEntry[],
+  workflow: [] as any[],
+  brokerComparison: [] as BrokerSlippageComparisonRow[],
+  aiDiagnostics: [] as AiSlippageDiagnostic[],
+  audits: [] as AuditRecord[],
   unsafeExecutionDisabled: false
 }));
 
-export function resetSlippageMonitorState(override?: ReturnType<typeof createSlippageMonitorSeed>) {
-  const next = override ? { ...override, audits: [] as AuditRecord[] } : seed();
-  state.thresholds = next.thresholds;
-  state.executions = next.executions;
-  state.trends = next.trends;
-  state.alerts = next.alerts;
-  state.logs = next.logs;
-  state.workflow = next.workflow;
-  state.brokerComparison = next.brokerComparison;
-  state.aiDiagnostics = next.aiDiagnostics;
+await ensureMt5ModuleHydrated("slippage-monitor");
+
+export function resetSlippageMonitorState(override?: Partial<typeof state>) {
+  state.thresholds = override?.thresholds ?? [];
+  state.executions = override?.executions ?? [];
+  state.trends = (override as any)?.trends ?? [];
+  state.alerts = override?.alerts ?? [];
+  state.logs = override?.logs ?? [];
+  state.workflow = (override as any)?.workflow ?? [];
+  state.brokerComparison = override?.brokerComparison ?? [];
+  state.aiDiagnostics = override?.aiDiagnostics ?? [];
   state.audits = [];
   state.unsafeExecutionDisabled = false;
 }

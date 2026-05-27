@@ -191,7 +191,7 @@ describe("EA bridge domain controls", () => {
         tradingAllowed: true,
         expertTradingAllowed: true
       }, `snapshot-${Date.now()}`);
-      expect(ingestSignedBridgeEvent(snapshot, "Account Snapshot", request).accountSync?.reconciliation.reconciliationStatus).toBe("Matched");
+      expect(ingestSignedBridgeEvent(snapshot, "Account Snapshot", request).accountSync?.reconciliation?.reconciliationStatus).toBe("Matched");
     });
   });
 

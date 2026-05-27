@@ -1,21 +1,23 @@
 import type { AuditRecord, Mt5Role } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/types/mt5-control-center.types";
 import { calculateMarketHealth, dailyMovePercent, detectMarketAlerts, quoteStatus, spreadPoints, topMarketMovers } from "@/modules/mt5-infrastructure-and-broker-connectivity/market-watch/algorithms/market-watch.algorithms";
-import { createMarketWatchSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/market-watch/data/market-watch.mock";
 import type { MarketInstrument, MarketWatchResponse } from "@/modules/mt5-infrastructure-and-broker-connectivity/market-watch/types/market-watch.types";
 import { resolveMt5Role } from "../../_lib/access";
-import { bindPersistedMt5State } from "../../_lib/persistence";
+import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
 
 const state = bindPersistedMt5State("market-watch", () => ({
-  ...createMarketWatchSeed(),
+  instruments: [] as MarketInstrument[],
+  sessions: [] as any[],
+  diagnostics: [] as any[],
   audits: [] as AuditRecord[],
   lastRefreshAt: new Date().toISOString()
 }));
 
-export function resetMarketWatchState(override?: ReturnType<typeof createMarketWatchSeed>) {
-  const next = override ?? createMarketWatchSeed();
-  for (const key of Object.keys(next) as (keyof typeof next)[]) {
-    (state as Record<string, unknown>)[key as string] = next[key];
-  }
+await ensureMt5ModuleHydrated("market-watch");
+
+export function resetMarketWatchState(override?: Partial<typeof state>) {
+  state.instruments = override?.instruments ?? [];
+  state.sessions = (override as any)?.sessions ?? [];
+  state.diagnostics = (override as any)?.diagnostics ?? [];
   state.audits = [];
   state.lastRefreshAt = new Date().toISOString();
 }

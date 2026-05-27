@@ -1,10 +1,10 @@
 import type { EaBridgeResponse, EaIngestionAuthDiagnostics, EaIngestionTokenFingerprint, EaPairingTestResult } from "../types/ea-bridge.types";
 
 export class EaBridgeActionError extends Error {
-  code?: string;
+  code?: EaPairingTestResult["code"];
   diagnostics?: EaIngestionAuthDiagnostics;
 
-  constructor(message: string, code?: string, diagnostics?: EaIngestionAuthDiagnostics) {
+  constructor(message: string, code?: EaPairingTestResult["code"], diagnostics?: EaIngestionAuthDiagnostics) {
     super(message);
     this.name = "EaBridgeActionError";
     this.code = code;
@@ -26,7 +26,7 @@ export async function runEaBridgeAction(path: string, body: Record<string, unkno
   });
   const payload = (await response.json()) as EaPairingTestResult & {
     error?: string;
-    code?: string;
+    code?: EaPairingTestResult["code"];
     diagnostics?: EaIngestionAuthDiagnostics;
   };
   if (!response.ok) {

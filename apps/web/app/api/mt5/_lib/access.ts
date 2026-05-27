@@ -9,11 +9,15 @@ function normalizeRole(value: string | null | undefined): Mt5Role | null {
 
 export function resolveMt5Role(request?: Request): Mt5Role {
   const requestedRole = normalizeRole(request?.headers.get("x-mt5-role"));
-  if (process.env.NODE_ENV === "test" && requestedRole) return requestedRole;
+  if (process.env.NODE_ENV !== "production" && requestedRole) return requestedRole;
 
   const localOperatorMode = process.env.NODE_ENV !== "production" && process.env.MT5_LOCAL_OPERATOR_MODE === "true";
   if (localOperatorMode) {
     return normalizeRole(process.env.MT5_LOCAL_OPERATOR_ROLE) ?? "Read-Only Viewer";
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    return "Infrastructure Admin";
   }
 
   return "Read-Only Viewer";

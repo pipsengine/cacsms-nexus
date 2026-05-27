@@ -1,4 +1,4 @@
-﻿import { createTerminalStatusSeed } from "@/tests/fixtures/terminal-status.fixture";
+import { createTerminalStatusSeed } from "@/tests/fixtures/terminal-status.fixture";
 import type { Mt5TerminalLink } from "@/modules/mt5-infrastructure-and-broker-connectivity/ea-terminal-hub/types/ea-terminal-hub.types";
 
 const DEFAULT_CACSMS_EA_ROOT = "C:\\Next-Generation\\cacsms-nexus\\services\\cacsms-ea";
@@ -20,6 +20,7 @@ export function createEaTerminalHubSeed() {
     const connected = index < 2;
     return {
       terminalId: terminal.terminalId,
+      terminalUuid: terminal.terminalUuid,
       terminalName: terminal.terminalName,
       brokerName: terminal.brokerName,
       accountLogin: terminal.accountLogin,
@@ -40,11 +41,15 @@ export function createEaTerminalHubSeed() {
       healthScore: terminal.healthScore,
       riskLevel: terminal.riskLevel,
       autoLinkOnConnect: true,
+      operatorManaged: false,
       isActive: index === 0,
       driftFileCount: index === 1 ? 2 : 0,
       missingInMt5Count: index === 1 ? 1 : 0,
       missingInSystemCount: index === 1 ? 1 : 0,
+      hashMismatchCount: 0,
       bridgeChannelId: connected ? `bridge-${terminal.terminalId}` : null,
+      eaInstanceId: null,
+      bridgeHeartbeatStatus: null,
       notes: null
     } satisfies Mt5TerminalLink;
   });

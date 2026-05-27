@@ -1,21 +1,45 @@
 import type { AuditRecord, Mt5Role } from "@/modules/mt5-infrastructure-and-broker-connectivity/mt5-control-center/types/mt5-control-center.types";
 import { analyzeChart, calculateWorkspaceHealth } from "@/modules/mt5-infrastructure-and-broker-connectivity/chart-control/algorithms/chart-control.algorithms";
-import { createChartControlSeed } from "@/modules/mt5-infrastructure-and-broker-connectivity/chart-control/data/chart-control.mock";
-import type { ChartControlResponse, Timeframe } from "@/modules/mt5-infrastructure-and-broker-connectivity/chart-control/types/chart-control.types";
+import type {
+  ChartControlResponse,
+  ChartInstrument,
+  ChartLayout,
+  ChartSignal,
+  ChartSnapshot,
+  DrawingObject,
+  Timeframe
+} from "@/modules/mt5-infrastructure-and-broker-connectivity/chart-control/types/chart-control.types";
 import { resolveMt5Role } from "../../_lib/access";
-import { bindPersistedMt5State } from "../../_lib/persistence";
+import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
 
-const state = bindPersistedMt5State("chart-control", () => ({
-  ...createChartControlSeed(),
+type ChartControlState = {
+  instruments: ChartInstrument[];
+  layouts: ChartLayout[];
+  drawings: DrawingObject[];
+  signals: ChartSignal[];
+  snapshots: ChartSnapshot[];
+  audits: AuditRecord[];
+  lastRefreshAt: string;
+};
+
+const state = bindPersistedMt5State<ChartControlState>("chart-control", () => ({
+  instruments: [],
+  layouts: [],
+  drawings: [],
+  signals: [],
+  snapshots: [],
   audits: [] as AuditRecord[],
   lastRefreshAt: new Date().toISOString()
 }));
 
-export function resetChartControlState(override?: ReturnType<typeof createChartControlSeed>) {
-  const next = override ?? createChartControlSeed();
-  for (const key of Object.keys(next) as (keyof typeof next)[]) {
-    (state as Record<string, unknown>)[key as string] = next[key];
-  }
+await ensureMt5ModuleHydrated("chart-control");
+
+export function resetChartControlState(override?: Partial<ChartControlState>) {
+  state.instruments = override?.instruments ?? [];
+  state.layouts = override?.layouts ?? [];
+  state.drawings = override?.drawings ?? [];
+  state.signals = override?.signals ?? [];
+  state.snapshots = override?.snapshots ?? [];
   state.audits = [];
   state.lastRefreshAt = new Date().toISOString();
 }

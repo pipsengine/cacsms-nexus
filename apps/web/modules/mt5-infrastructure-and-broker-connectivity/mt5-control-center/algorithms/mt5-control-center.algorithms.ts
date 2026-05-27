@@ -88,7 +88,17 @@ export function detectMarketDataGaps(symbols: SymbolMapping[], now = Date.now(),
 }
 
 export function calculateExecutionQuality(samples: ExecutionSample[]) {
-  const total = samples.length || 1;
+  if (samples.length === 0) {
+    return {
+      averageExecutionMs: 0,
+      averageSlippagePoints: 0,
+      rejectionRate: 0,
+      requoteRate: 0,
+      fillQualityScore: 0
+    };
+  }
+
+  const total = samples.length;
   const rejected = samples.filter((sample) => sample.rejectionReason).length;
   const requotes = samples.filter((sample) => sample.requoteDetected).length;
   const averageExecutionMs = samples.reduce((sum, sample) => sum + sample.executionTimeMs, 0) / total;
