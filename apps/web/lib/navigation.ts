@@ -159,25 +159,7 @@ const definitions: SectionDefinition[] = [
   },
   {
     title: "Accounts & Portfolio",
-    items: [
-      "Account Center",
-      "Broker Accounts",
-      "Prop Firm Accounts",
-      "Live Accounts",
-      "Demo Accounts",
-      "Account Switcher",
-      "Portfolio Dashboard",
-      "Balance & Equity",
-      "Margin Monitor",
-      "Leverage Monitor",
-      "Exposure Dashboard",
-      "Account Performance",
-      "Multi-Account Sync",
-      "Account Analytics",
-      "Capital Allocation",
-      "Account History",
-      "Funding History"
-    ]
+    items: ["Account Center", "Portfolio Dashboard", "Risk & Exposure", "Account History"]
   },
   {
     title: "Autonomous Computer Operator",

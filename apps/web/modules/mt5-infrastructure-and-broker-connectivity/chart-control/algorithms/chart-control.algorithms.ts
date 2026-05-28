@@ -9,6 +9,19 @@ export function visibleCandles(candles: Candle[], timeframe: Timeframe) {
 
 export function analyzeChart(instrument: ChartInstrument, timeframe = instrument.timeframe): ChartAnalysis {
   const candles = visibleCandles(instrument.candles, timeframe);
+  if (!candles.length) {
+    const price = instrument.bid || instrument.ask || 0;
+    return {
+      trend: "Range",
+      changePercent: 0,
+      rsi: 50,
+      support: price,
+      resistance: price,
+      averageVolume: 0,
+      volatilityPercent: 0,
+      status: chartStatus(instrument)
+    };
+  }
   const first = candles[0].close;
   const latest = candles.at(-1)!;
   const changePercent = Number((((latest.close - first) / first) * 100).toFixed(2));
@@ -30,6 +43,9 @@ export function chartStatus(instrument: ChartInstrument): ChartTone {
 
 function analyzeWithoutStatus(instrument: ChartInstrument) {
   const candles = visibleCandles(instrument.candles, instrument.timeframe);
+  if (!candles.length) {
+    return { volatilityPercent: 0 };
+  }
   const last = candles.at(-1)!;
   const support = Math.min(...candles.map((candle) => candle.low));
   const resistance = Math.max(...candles.map((candle) => candle.high));

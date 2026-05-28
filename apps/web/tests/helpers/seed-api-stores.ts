@@ -18,6 +18,7 @@ import { resetSpreadMonitorState } from "@/app/api/mt5/spread-monitor/_lib/store
 import { resetSymbolSyncState } from "@/app/api/mt5/symbol-sync/_lib/store";
 import { resetTerminalStatusState } from "@/app/api/mt5/terminal-status/_lib/store";
 import { resetTradeSyncState } from "@/app/api/mt5/trade-synchronization/store";
+import { resetDesktopAutomationState } from "@/app/api/autonomous-computer-operator/desktop-automation-hub/_lib/store";
 import { createAccountSyncSeed } from "@/tests/fixtures/account-sync.fixture";
 import { createBrokerConnectionsSeed } from "@/tests/fixtures/broker-connections.fixture";
 import { createChartControlSeed } from "@/tests/fixtures/chart-control.fixture";
@@ -113,6 +114,10 @@ export function seedSymbolSyncStore() {
 
 export function seedTerminalStatusStore() {
   resetTerminalStatusState(createTerminalStatusSeed());
+}
+
+export function seedDesktopAutomationHubStore() {
+  resetDesktopAutomationState();
 }
 
 export function seedTradeSyncStore() {

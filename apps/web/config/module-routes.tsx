@@ -20,6 +20,12 @@ import { SpreadMonitorDashboard } from "@/modules/mt5-infrastructure-and-broker-
 import { SymbolSyncDashboard } from "@/modules/mt5-infrastructure-and-broker-connectivity/symbol-sync/components/symbol-sync-dashboard";
 import { TerminalStatusDashboard } from "@/modules/mt5-infrastructure-and-broker-connectivity/terminal-status/components/terminal-status-dashboard";
 import { TradeSynchronizationDashboard } from "@/modules/mt5-infrastructure-and-broker-connectivity/trade-synchronization/components/trade-synchronization-dashboard";
+import { OperatorDashboard } from "@/modules/autonomous-computer-operator/operator-dashboard/components/operator-dashboard";
+import { DesktopAutomationHubDashboard } from "@/modules/autonomous-computer-operator/desktop-automation-hub/components/desktop-automation-hub-dashboard";
+import { RemoteControlHubDashboard } from "@/modules/autonomous-computer-operator/remote-control-hub/components/remote-control-hub-dashboard";
+import { AccountCenterDashboard } from "@/modules/accounts-and-portfolio/account-center/components/account-center-dashboard";
+import { PortfolioDashboard } from "@/modules/accounts-and-portfolio/portfolio-dashboard/components/portfolio-dashboard";
+import { RiskAndExposureDashboard } from "@/modules/accounts-and-portfolio/risk-and-exposure/components/risk-and-exposure-dashboard";
 
 /** Canonical paths for implemented module dashboards. */
 export const implementedModulePages: Record<string, ComponentType> = {
@@ -42,12 +48,20 @@ export const implementedModulePages: Record<string, ComponentType> = {
   "/mt5-infrastructure-and-broker-connectivity/spread-monitor": SpreadMonitorDashboard,
   "/mt5-infrastructure-and-broker-connectivity/slippage-monitor": SlippageMonitorDashboard,
   "/mt5-infrastructure-and-broker-connectivity/mt5-error-logs": Mt5ErrorLogsDashboard,
-  "/mt5-infrastructure-and-broker-connectivity/ea-monitoring": EaMonitoringDashboard
+  "/mt5-infrastructure-and-broker-connectivity/ea-monitoring": EaMonitoringDashboard,
+  "/accounts-and-portfolio/account-center": AccountCenterDashboard,
+  "/accounts-and-portfolio/portfolio-dashboard": PortfolioDashboard,
+  "/accounts-and-portfolio/risk-and-exposure": RiskAndExposureDashboard,
+  "/autonomous-computer-operator/operator-dashboard": OperatorDashboard,
+  "/autonomous-computer-operator/remote-control-hub": RemoteControlHubDashboard,
+  "/autonomous-computer-operator/desktop-automation-hub": DesktopAutomationHubDashboard
 };
+
+import { consolidatedNavigationAliases } from "./navigation-aliases";
 
 /** Legacy or alias paths that should resolve to a canonical implemented route. */
 export const modulePathAliases: Record<string, string> = {
-  "/mt5-infrastructure-and-broker-connectivity/ea-and-terminal-hub": "/mt5-infrastructure-and-broker-connectivity/ea-terminal-hub"
+  ...consolidatedNavigationAliases
 };
 
 export function resolveImplementedModulePage(pathname: string) {

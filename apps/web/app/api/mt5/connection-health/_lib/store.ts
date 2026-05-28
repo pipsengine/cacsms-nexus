@@ -556,3 +556,7 @@ export function isTradingSafe() {
   const safe = tradingPathSafety(mapByType as any, !state.disabledUnsafeTrading);
   return safe;
 }
+
+export function connectionHealthUnsafeTradingDisabled() {
+  return state.disabledUnsafeTrading;
+}

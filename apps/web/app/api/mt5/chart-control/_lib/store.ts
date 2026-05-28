@@ -11,6 +11,8 @@ import type {
 } from "@/modules/mt5-infrastructure-and-broker-connectivity/chart-control/types/chart-control.types";
 import { resolveMt5Role } from "../../_lib/access";
 import { bindPersistedMt5State, ensureMt5ModuleHydrated } from "../../_lib/persistence";
+import { normalizeBrokerSymbol } from "@/modules/mt5-infrastructure-and-broker-connectivity/symbol-sync/algorithms/symbol-sync.algorithms";
+import { quoteSymbolKey } from "../../_lib/quote-ingest-shared";
 import { ingestLiveQuoteFromHeartbeat } from "./ingest-quotes";
 import type { LiveQuoteInput } from "../../_lib/quote-ingest-shared";
 
@@ -69,6 +71,80 @@ function instrument(id: string) {
   const item = state.instruments.find((entry) => entry.id === id);
   if (!item) throw new Error("Chart instrument not found.");
   return item;
+}
+
+function digitsForSymbol(normalizedSymbol: string) {
+  const upper = normalizedSymbol.toUpperCase();
+  if (upper.startsWith("XAU")) return 2;
+  if (upper.endsWith("JPY")) return 3;
+  if (/^(NAS100|SPX500|US30|UK100|DE40)/.test(upper)) return 1;
+  return 5;
+}
+
+function ensureInstrumentOnLayout(instrument: ChartInstrument, receivedAt: string) {
+  let layout = state.layouts.find((entry) => entry.active);
+  if (!layout) {
+    state.layouts.unshift({
+      id: "layout-live",
+      name: "Live Workspace",
+      slots: 4,
+      instruments: [instrument.symbol],
+      timeframes: [instrument.timeframe],
+      indicators: ["EMA 9", "RSI 14"],
+      active: true,
+      updatedAt: receivedAt
+    });
+    return;
+  }
+  if (!layout.instruments.includes(instrument.symbol)) {
+    layout.instruments = [...layout.instruments, instrument.symbol].slice(0, layout.slots);
+    layout.timeframes = [...layout.timeframes, instrument.timeframe].slice(0, layout.slots);
+    layout.updatedAt = receivedAt;
+  }
+}
+
+export function ensureChartInstrument(input: {
+  symbol: string;
+  brokerName: string;
+  brokerId: string;
+  role: Mt5Role;
+  confirmed?: boolean;
+  request?: Request;
+}) {
+  authorize(input.role, "configure");
+  confirm(input.confirmed);
+  const normalized = normalizeBrokerSymbol(input.symbol);
+  const existing = state.instruments.find(
+    (item) => item.symbol === normalized.normalizedSymbol && item.brokerName === input.brokerName
+  );
+  if (existing) return existing;
+
+  const now = new Date().toISOString();
+  const digits = digitsForSymbol(normalized.normalizedSymbol);
+  const close = 1;
+  const instrument: ChartInstrument = {
+    id: `chart-${quoteSymbolKey(input.brokerId, normalized.normalizedSymbol)}`.replace(/[^a-z0-9-]/g, "-"),
+    symbol: normalized.normalizedSymbol,
+    description: `${normalized.normalizedSymbol} automation chart`,
+    assetClass: normalized.assetClass,
+    brokerName: input.brokerName,
+    digits,
+    timeframe: "M15",
+    availableTimeframes: ["M1", "M5", "M15", "H1", "H4", "D1"],
+    bid: close,
+    ask: close,
+    spreadPoints: 1,
+    lastTickAt: now,
+    feedStatus: "Watch",
+    tradeEnabled: true,
+    candles: [{ timestamp: now, open: close, high: close, low: close, close, volume: 1, sma20: close, ema9: close, rsi: 50 }],
+    visibleIndicators: ["EMA 9", "RSI 14"]
+  };
+  state.instruments.unshift(instrument);
+  ensureInstrumentOnLayout(instrument, now);
+  state.lastRefreshAt = now;
+  audit(input.role, "Chart instrument provisioned for automation", instrument.id, null, { symbol: instrument.symbol, brokerName: input.brokerName }, input.request);
+  return instrument;
 }
 
 export function audits() { return state.audits; }
